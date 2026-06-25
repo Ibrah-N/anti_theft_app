@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 
+import 'home_page.dart';
+import 'login_page.dart';
+import 'routes.dart';
+
+
 void main() {
   runApp(const MyApp());
 }
@@ -13,19 +18,13 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Flutter Demo',
-      
-      home: Scaffold(
-        appBar: AppBar(
-          title: const Text('Flutter Demo Home Page'),
-        ),
-        body: const Center(
-          child: Text(
-            "Hello, World!",
-            textDirection: TextDirection.ltr,
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            textAlign: TextAlign.right,
-
-          ),)), 
+      home: const LoginPage(),
+    
+      routes: {
+        MyRoutes.home: (context) => const HomePage(),
+        MyRoutes.login: (context) => const LoginPage(),
+      },
+    
     );
   }
 }

@@ -66,5 +66,11 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>SmartGuard needs location to track your vehicle</string>
+	
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+<string>SmartGuard needs background location access to continuously track your vehicle.</string>
 </dict>
 </plist>

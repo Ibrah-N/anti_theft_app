@@ -1,3 +1,5 @@
+// lib/presentation/screens/home/home_screen.dart
+
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../data/models/vehicle_model.dart';
@@ -9,8 +11,9 @@ import '../../widgets/home/latest_alert_card.dart';
 import '../../widgets/common/bottom_nav_bar.dart';
 import '../vehicle/vehicle_screen.dart';
 import '../map/map_screen.dart';
-import '../settings/settings_screen.dart';
 import '../camera/camera_screen.dart';
+import '../alerts/alerts_screen.dart';
+import '../settings/settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,169 +24,51 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _navIndex = 0;
-  // Mock data — will be replaced by provider/repository in Step 2
-  final VehicleModel _vehicle = VehicleModel.mock();
-  final AlertModel _latestAlert = AlertModel.mock();
 
-  void _toggleEngine() {
-    // TODO Step 2: call repository
-  }
+  final VehicleModel _vehicle     = VehicleModel.mock();
+  final AlertModel   _latestAlert = AlertModel.mock();
 
-  void _toggleFuel() {
-    // TODO Step 2: call repository
+  void _toggleEngine() { /* TODO Step 2 */ }
+  void _toggleFuel()   { /* TODO Step 2 */ }
+
+  // ── Body switcher ─────────────────────────────────────────────────────────
+  Widget _buildBody() {
+    switch (_navIndex) {
+      case 0: return _HomeTab(
+          vehicle:        _vehicle,
+          latestAlert:    _latestAlert,
+          onToggleEngine: _toggleEngine,
+          onToggleFuel:   _toggleFuel,
+          buildAppBar:    _buildAppBar,
+        );
+      case 1: return const VehicleScreen();
+      case 2: return const MapScreen();
+      case 3: return const CameraScreen();
+      case 4: return const AlertsScreen();
+      case 5: return const SettingsScreen();
+      default: return const SizedBox.shrink();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.scaffoldBg,
-      body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            // ── App Bar ───────────────────────────────────────
-            SliverToBoxAdapter(child: _buildAppBar()),
-
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-
-                  // ── Vehicle Status Card ──────────────────────
-                  VehicleStatusCard(vehicle: _vehicle),
-                  const SizedBox(height: 24),
-
-                  // ── Quick Controls label ─────────────────────
-                  const Text('QUICK CONTROLS',
-                      style: TextStyle(
-                          color: AppColors.labelColor,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 1.5)),
-                  const SizedBox(height: 12),
-
-                  // ── Engine + Fuel row ────────────────────────
-                  Row(children: [
-                    Expanded(
-                      child: QuickControlCard(
-                        icon: Icons.power_settings_new_rounded,
-                        title: 'Engine',
-                        subtitle: 'Ignition control',
-                        badgeLabel: _vehicle.engineOn ? 'ON' : 'OFF',
-                        badgeColor: _vehicle.engineOn
-                            ? AppColors.badgeOn
-                            : AppColors.badgeOff,
-                        badgeBg: _vehicle.engineOn
-                            ? AppColors.statusGreenBg
-                            : AppColors.badgeOffBg,
-                        onTap: _toggleEngine,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: QuickControlCard(
-                        icon: Icons.water_drop_outlined,
-                        title: 'Fuel',
-                        subtitle: 'Cutoff system',
-                        badgeLabel: _vehicle.fuelFlowing ? 'FLOW' : 'CUT',
-                        badgeColor: _vehicle.fuelFlowing
-                            ? AppColors.badgeFlow
-                            : AppColors.badgeOff,
-                        badgeBg: _vehicle.fuelFlowing
-                            ? AppColors.statusGreenBg
-                            : AppColors.badgeOffBg,
-                        onTap: _toggleFuel,
-                      ),
-                    ),
-                  ]),
-                  const SizedBox(height: 12),
-
-                  // ── Stat cards row ───────────────────────────
-                  Row(children: [
-                    Expanded(
-                      child: StatCard(
-                        icon: Icons.show_chart_rounded,
-                        iconColor: AppColors.accentBlue,
-                        value: _vehicle.speedKmh.toInt().toString(),
-                        unit: 'km/h',
-                        label: 'SPEED',
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: StatCard(
-                        icon: Icons.bolt_rounded,
-                        iconColor: AppColors.statusAmber,
-                        value: _vehicle.batteryLevel.toString(),
-                        unit: 'volts',
-                        label: 'BATTERY',
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: StatCard(
-                        icon: Icons.signal_cellular_alt_rounded,
-                        iconColor: AppColors.statusGreen,
-                        value: '${_vehicle.signalBars}/4',
-                        unit: 'bars',
-                        label: 'SIGNAL',
-                      ),
-                    ),
-                  ]),
-                  const SizedBox(height: 24),
-
-                  // ── Latest Alert label ───────────────────────
-                  const Text('LATEST ALERT',
-                      style: TextStyle(
-                          color: AppColors.labelColor,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 1.5)),
-                  const SizedBox(height: 12),
-
-                  // ── Alert card ───────────────────────────────
-                  LatestAlertCard(alert: _latestAlert),
-
-                  const SizedBox(height: 24),
-                ]),
-              ),
-            ),
-          ],
-        ),
-      ),
-
-      // ── Bottom Nav ─────────────────────────────────────────
+      body: _buildBody(),
       bottomNavigationBar: SmartGuardBottomNav(
         currentIndex: _navIndex,
-
-      onTap: (i) {
-          if (i == 1) {
-            Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const VehicleScreen()));
-          } else if (i == 2) {
-            Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const MapScreen()));
-          } else if (i == 3) {
-            Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const CameraScreen()));
-          } else if (i == 5) {
-            Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const SettingsScreen()));
-          } else {
-            setState(() => _navIndex = i);
-          }
-        },
-
+        onTap: (i) => setState(() => _navIndex = i),
       ),
     );
   }
 
+  // ── App Bar (only used by HomeTab) ────────────────────────────────────────
   Widget _buildAppBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Left: label + name + reg
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -207,12 +92,9 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-
-          // Right: notification bell + online pill (stacked)
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // Bell with badge
               Stack(clipBehavior: Clip.none, children: [
                 Container(
                   width: 40, height: 40,
@@ -238,8 +120,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ]),
               const SizedBox(height: 10),
-
-              // Online pill
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                 decoration: BoxDecoration(
@@ -248,24 +128,122 @@ class _HomeScreenState extends State<HomeScreen> {
                   border: Border.all(
                       color: AppColors.statusGreen.withOpacity(0.4), width: 1),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                        width: 7, height: 7,
-                        decoration: const BoxDecoration(
-                            color: AppColors.statusGreen,
-                            shape: BoxShape.circle)),
-                    const SizedBox(width: 6),
-                    const Text('Online',
-                        style: TextStyle(
-                            color: AppColors.statusGreen,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600)),
-                  ],
-                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(
+                      width: 7, height: 7,
+                      decoration: const BoxDecoration(
+                          color: AppColors.statusGreen, shape: BoxShape.circle)),
+                  const SizedBox(width: 6),
+                  const Text('Online',
+                      style: TextStyle(
+                          color: AppColors.statusGreen,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600)),
+                ]),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Home tab ──────────────────────────────────────────────────────────────────
+class _HomeTab extends StatelessWidget {
+  final VehicleModel   vehicle;
+  final AlertModel     latestAlert;
+  final VoidCallback   onToggleEngine;
+  final VoidCallback   onToggleFuel;
+  final Widget Function() buildAppBar;
+
+  const _HomeTab({
+    required this.vehicle,
+    required this.latestAlert,
+    required this.onToggleEngine,
+    required this.onToggleFuel,
+    required this.buildAppBar,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(child: buildAppBar()),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                VehicleStatusCard(vehicle: vehicle),
+                const SizedBox(height: 24),
+                const Text('QUICK CONTROLS',
+                    style: TextStyle(
+                        color: AppColors.labelColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1.5)),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(
+                    child: QuickControlCard(
+                      icon: Icons.power_settings_new_rounded,
+                      title: 'Engine',
+                      subtitle: 'Ignition control',
+                      badgeLabel: vehicle.engineOn ? 'ON' : 'OFF',
+                      badgeColor: vehicle.engineOn ? AppColors.badgeOn  : AppColors.badgeOff,
+                      badgeBg:    vehicle.engineOn ? AppColors.statusGreenBg : AppColors.badgeOffBg,
+                      onTap: onToggleEngine,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: QuickControlCard(
+                      icon: Icons.water_drop_outlined,
+                      title: 'Fuel',
+                      subtitle: 'Cutoff system',
+                      badgeLabel: vehicle.fuelFlowing ? 'FLOW' : 'CUT',
+                      badgeColor: vehicle.fuelFlowing ? AppColors.badgeFlow : AppColors.badgeOff,
+                      badgeBg:    vehicle.fuelFlowing ? AppColors.statusGreenBg : AppColors.badgeOffBg,
+                      onTap: onToggleFuel,
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(child: StatCard(
+                    icon: Icons.show_chart_rounded,
+                    iconColor: AppColors.accentBlue,
+                    value: vehicle.speedKmh.toInt().toString(),
+                    unit: 'km/h', label: 'SPEED',
+                  )),
+                  const SizedBox(width: 10),
+                  Expanded(child: StatCard(
+                    icon: Icons.bolt_rounded,
+                    iconColor: AppColors.statusAmber,
+                    value: vehicle.batteryLevel.toString(),
+                    unit: 'volts', label: 'BATTERY',
+                  )),
+                  const SizedBox(width: 10),
+                  Expanded(child: StatCard(
+                    icon: Icons.signal_cellular_alt_rounded,
+                    iconColor: AppColors.statusGreen,
+                    value: '${vehicle.signalBars}/4',
+                    unit: 'bars', label: 'SIGNAL',
+                  )),
+                ]),
+                const SizedBox(height: 24),
+                const Text('LATEST ALERT',
+                    style: TextStyle(
+                        color: AppColors.labelColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1.5)),
+                const SizedBox(height: 12),
+                LatestAlertCard(alert: latestAlert),
+                const SizedBox(height: 24),
+              ]),
+            ),
           ),
         ],
       ),

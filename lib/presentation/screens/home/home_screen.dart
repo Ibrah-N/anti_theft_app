@@ -7,6 +7,7 @@ import '../../widgets/home/quick_control_card.dart';
 import '../../widgets/home/stat_card.dart';
 import '../../widgets/home/latest_alert_card.dart';
 import '../../widgets/common/bottom_nav_bar.dart';
+import '../vehicle/vehicle_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -150,7 +151,14 @@ class _HomeScreenState extends State<HomeScreen> {
       // ── Bottom Nav ─────────────────────────────────────────
       bottomNavigationBar: SmartGuardBottomNav(
         currentIndex: _navIndex,
-        onTap: (i) => setState(() => _navIndex = i),
+        onTap: (i) {
+          if (i == 1) {
+            Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const VehicleScreen()));
+          } else {
+            setState(() => _navIndex = i);
+          }
+        },
       ),
     );
   }

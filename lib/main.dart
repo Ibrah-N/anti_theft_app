@@ -1,30 +1,18 @@
 import 'package:flutter/material.dart';
+import 'presentation/screens/home/home_screen.dart'; // ← change import
 
-import 'home_page.dart';
-import 'login_page.dart';
-import 'routes.dart';
+void main() => runApp(const SmartGuardApp());
 
-
-void main() {
-  runApp(const MyApp());
-}
-
-
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class SmartGuardApp extends StatelessWidget {
+  const SmartGuardApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
-      home: const LoginPage(),
-    
-      routes: {
-        MyRoutes.home: (context) => const HomePage(),
-        MyRoutes.login: (context) => const LoginPage(),
-      },
-    
+      title: 'SmartGuard',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(fontFamily: 'SF Pro Display'),
+      home: const HomeScreen(), // ← point to home for now
     );
   }
 }

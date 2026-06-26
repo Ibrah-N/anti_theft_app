@@ -10,6 +10,7 @@ import '../../widgets/common/bottom_nav_bar.dart';
 import '../vehicle/vehicle_screen.dart';
 import '../map/map_screen.dart';
 import '../settings/settings_screen.dart';
+import '../camera/camera_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -161,6 +162,9 @@ class _HomeScreenState extends State<HomeScreen> {
           } else if (i == 2) {
             Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const MapScreen()));
+          } else if (i == 3) {
+            Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const CameraScreen()));
           } else if (i == 5) {
             Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const SettingsScreen()));

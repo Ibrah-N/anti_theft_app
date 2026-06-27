@@ -43,3 +43,12 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+
+
+# Backend
+backend/.env
+backend/__pycache__/
+backend/**/__pycache__/
+backend/venv/
+backend/.venv/

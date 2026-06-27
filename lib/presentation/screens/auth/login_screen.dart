@@ -1,8 +1,12 @@
+// lib/presentation/screens/auth/login_screen.dart
+// CHANGED: _onSignIn navigates to HomeScreen and clears the stack
+
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_dimensions.dart';
 import '../../widgets/common/custom_text_field.dart';
 import '../../widgets/common/custom_button.dart';
+import '../home/home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,9 +16,9 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _formKey = GlobalKey<FormState>();
+  final _formKey              = GlobalKey<FormState>();
   final _identifierController = TextEditingController();
-  final _passwordController = TextEditingController();
+  final _passwordController   = TextEditingController();
   bool _isLoading = false;
 
   @override
@@ -25,21 +29,29 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _onSignIn() {
-    if (_formKey.currentState?.validate() ?? false) {
-      setState(() => _isLoading = true);
-      // TODO (Step 2): hook up auth repository
-      Future.delayed(const Duration(seconds: 2), () {
-        setState(() => _isLoading = false);
-      });
-    }
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    setState(() => _isLoading = true);
+
+    // TODO Step 2: replace Future.delayed with real auth repository call
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      // ── Navigate to Home and remove ALL previous routes ──────────────────
+      // pushAndRemoveUntil ensures the user cannot press Back to get to Login
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (route) => false, // remove everything below
+      );
+    });
   }
 
   void _onBiometric() {
-    // TODO (Step 3): hook up biometric auth service
+    // TODO Step 3: hook up biometric auth service
   }
 
   void _onQrPair() {
-    // TODO (Step 2): navigate to QR pairing screen
+    // TODO Step 2: navigate to QR pairing screen
   }
 
   @override
@@ -139,18 +151,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: const [
-                      Icon(
-                        Icons.wifi_tethering,
-                        color: AppColors.textSecondary,
-                        size: 16,
-                      ),
+                      Icon(Icons.wifi_tethering,
+                          color: AppColors.textSecondary, size: 16),
                       SizedBox(width: AppDimensions.paddingSM),
                       Text(
                         'Pair a new device via QR code',
                         style: TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 13,
-                        ),
+                            color: AppColors.textSecondary, fontSize: 13),
                       ),
                     ],
                   ),
@@ -166,7 +173,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// ── Private Sub-Widgets ──────────────────────────────────────────────────────
+// ── Private sub-widgets ───────────────────────────────────────────────────────
 
 class _ShieldLogo extends StatelessWidget {
   @override
@@ -195,10 +202,9 @@ class _OrDivider extends StatelessWidget {
         Expanded(child: Divider(color: AppColors.divider)),
         Padding(
           padding: EdgeInsets.symmetric(horizontal: AppDimensions.paddingMD),
-          child: Text(
-            'or',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
-          ),
+          child: Text('or',
+              style:
+                  TextStyle(color: AppColors.textSecondary, fontSize: 13)),
         ),
         Expanded(child: Divider(color: AppColors.divider)),
       ],

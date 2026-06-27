@@ -7,6 +7,7 @@ import '../../../data/models/user_model.dart';
 import '../../../data/models/settings_model.dart';
 import '../../widgets/settings/profile_card.dart';
 import '../../widgets/settings/settings_section.dart';
+import '../auth/login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -41,8 +42,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           TextButton(
             onPressed: () {
-              Navigator.pop(context);
               // TODO Step 2: clear tokens + navigate to LoginScreen
+              Navigator.pop(context); // close dialog
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                (route) => false,
+              );
             },
             child: const Text('Sign Out',
                 style: TextStyle(color: AppColors.statusRed)),

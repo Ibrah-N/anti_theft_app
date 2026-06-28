@@ -6,7 +6,7 @@ def test_register_vehicle(client):
         json={
             "name": "Toyota Camry 2023",
             "reg_number": "TYC-2023-0847A",
-            "device_id": "ESP32-001",
+            "device_id": "ESP32-0001",
         },
     )
     assert response.status_code == 201
@@ -14,7 +14,7 @@ def test_register_vehicle(client):
     assert "id" in data
     assert data["name"] == "Toyota Camry 2023"
     assert data["reg_number"] == "TYC-2023-0847A"
-    assert data["device_id"] == "ESP32-001"
+    assert data["device_id"] == "ESP32-0001"
 
 def test_get_vehicle_status(client):
     response = client.get("/api/vehicle/status")

@@ -1,13 +1,6 @@
-from fastapi.testclient import TestClient
+# tests/test_auth.py
 
-from app.main import app
-
-client = TestClient(app)
-
-
-def test_register_user():
-    """Register a new user successfully."""
-
+def test_register_user(client):
     response = client.post(
         "/api/auth/register",
         json={
@@ -17,21 +10,15 @@ def test_register_user():
             "password": "secure123",
         },
     )
-
     assert response.status_code == 201
-
     data = response.json()
-
     assert data["email"] == "ibrahim@smartguard.com"
     assert data["full_name"] == "Ibrahim"
     assert data["is_active"] is True
     assert data["is_verified"] is False
     assert "id" in data
 
-
-def test_login_success():
-    """Login using valid credentials."""
-
+def test_login_success(client):
     response = client.post(
         "/api/auth/login",
         json={
@@ -39,19 +26,13 @@ def test_login_success():
             "password": "secure123",
         },
     )
-
     assert response.status_code == 200
-
     data = response.json()
-
     assert "access_token" in data
     assert "refresh_token" in data
     assert data["token_type"] == "bearer"
 
-
-def test_register_duplicate_email():
-    """Registering the same email twice should fail."""
-
+def test_register_duplicate_email(client):
     response = client.post(
         "/api/auth/register",
         json={
@@ -61,17 +42,11 @@ def test_register_duplicate_email():
             "password": "secure123",
         },
     )
-
     assert response.status_code == 400
-
     data = response.json()
-
     assert "already" in data["detail"].lower()
 
-
-def test_login_wrong_password():
-    """Login should fail with an incorrect password."""
-
+def test_login_wrong_password(client):
     response = client.post(
         "/api/auth/login",
         json={
@@ -79,9 +54,6 @@ def test_login_wrong_password():
             "password": "wrongpassword",
         },
     )
-
     assert response.status_code == 401
-
     data = response.json()
-
     assert "invalid" in data["detail"].lower()

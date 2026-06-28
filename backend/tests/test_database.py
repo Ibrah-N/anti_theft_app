@@ -1,17 +1,16 @@
 from sqlalchemy import text
 
-from app.core.database import engine
-from app.core.config import settings
+from tests.conftest import test_engine
 
 
 def test_database_connection():
-    with engine.connect() as connection:
+    """Ensure the test database is reachable."""
+
+    with test_engine.connect() as connection:
         result = connection.execute(
             text("SELECT current_database()")
         )
 
         database_name = result.scalar()
 
-    expected = settings.DATABASE_URL.rsplit("/", 1)[-1]
-
-    assert database_name == expected
+    assert database_name == "smartguard_test"

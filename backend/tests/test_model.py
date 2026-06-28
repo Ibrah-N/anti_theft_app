@@ -1,26 +1,23 @@
 from sqlalchemy import inspect
 
-from app.core.database import Base, engine
-
-# Import all models so SQLAlchemy registers them with Base.metadata
+from app.core.database import Base
 from app.models import User, Vehicle, Alert
+
+from tests.conftest import test_engine
 
 
 def test_database_tables_created():
-    """Ensure all database tables are created successfully."""
+    """Ensure all model tables exist in the test database."""
 
-    # Create all tables (safe to call multiple times)
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=test_engine)
 
-    inspector = inspect(engine)
-    tables = inspector.get_table_names()
+    inspector = inspect(test_engine)
+    tables = set(inspector.get_table_names())
 
     expected_tables = {
-        "users",
-        "vehicles",
-        "alerts",
+        User.__tablename__,
+        Vehicle.__tablename__,
+        Alert.__tablename__,
     }
 
-    # Verify every expected table exists
-    for table in expected_tables:
-        assert table in tables, f"Table '{table}' was not created."
+    assert expected_tables.issubset(tables)

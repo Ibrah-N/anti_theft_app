@@ -11,7 +11,7 @@ from app.models import User, Vehicle, Alert
 from app.routes import auth, vehicle, alerts
 
 # ── Create tables if they don't exist ────────────────────────────────────────
-Base.metadata.create_all(bind=engine)
+# Base.metadata.create_all(bind=engine)
 
 # ── App instance ──────────────────────────────────────────────────────────────
 app = FastAPI(

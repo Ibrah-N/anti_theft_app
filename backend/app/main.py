@@ -8,7 +8,7 @@ from app.core.database import engine, Base
 from app.models import User, Vehicle, Alert
 
 # Import routers
-from app.routes import auth, vehicle, alerts
+from app.routes import auth, vehicle, alerts, gps
 
 # ── Create tables if they don't exist ────────────────────────────────────────
 # Base.metadata.create_all(bind=engine)
@@ -34,6 +34,7 @@ app.add_middleware(
 app.include_router(auth.router,    prefix="/api/auth",    tags=["Auth"])
 app.include_router(vehicle.router, prefix="/api/vehicle", tags=["Vehicle"])
 app.include_router(alerts.router,  prefix="/api/alerts",  tags=["Alerts"])
+app.include_router(gps.router,    prefix="/api/gps",     tags=["GPS"])
 
 # ── Health check ──────────────────────────────────────────────────────────────
 @app.get("/", tags=["Health"])

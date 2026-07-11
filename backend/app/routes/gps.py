@@ -77,3 +77,20 @@ def record_reading(
     db.commit()
 
     return reading
+
+# ── Request live GPS from device ──────────────────────────────────────────────
+@router.post("/request", response_model=dict)
+def request_gps(
+    vehicle: Vehicle = Depends(get_current_vehicle),
+):
+    from app.services.mqtt_service import mqtt_service
+    if not mqtt_service.is_connected:
+        raise HTTPException(
+            status_code=503,
+            detail="MQTT broker not connected"
+        )
+    mqtt_service.publish_gps_request(vehicle.device_id)
+    return {
+        "message": "GPS request sent to device",
+        "device_id": vehicle.device_id,
+    }

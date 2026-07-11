@@ -19,10 +19,20 @@ class Settings(BaseSettings):
     APP_NAME: str = "SmartGuard"
     DEBUG: bool = True
 
+    # MQTT
+    MQTT_HOST:      str
+    MQTT_PORT:      int = 8883
+    MQTT_USERNAME:  str
+    MQTT_PASSWORD:  str
+    MQTT_CLIENT_ID: str = "smartguard_backend"
+
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=True,
     )
+
+
 
 # Single instance imported everywhere
 settings = Settings()

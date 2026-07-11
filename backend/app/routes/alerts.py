@@ -8,8 +8,9 @@ from app.core.database import get_db
 from app.models.alert import Alert, AlertCategory
 from app.models.vehicle import Vehicle
 from app.models.user import User
-from app.routes.vehicle import get_mock_user, get_user_vehicle
 from app.schemas.alert import AlertResponse, AlertListResponse
+
+from app.core.dependencies import get_current_vehicle
 
 router = APIRouter()
 
@@ -20,10 +21,9 @@ def list_alerts(
     unread_only: bool              = Query(default=False),
     limit: int                     = Query(default=20, le=100),
     offset: int                    = Query(default=0),
+    vehicle: Vehicle               = Depends(get_current_vehicle),
     db: Session                    = Depends(get_db),
 ):
-    user    = get_mock_user(db)
-    vehicle = get_user_vehicle(db, user)
 
     # Base query — always scoped to this vehicle
     query = db.query(Alert).filter(Alert.vehicle_id == vehicle.id)
@@ -54,10 +54,9 @@ def list_alerts(
 @router.patch("/{alert_id}/read", response_model=AlertResponse)
 def mark_read(
     alert_id: int,
-    db: Session = Depends(get_db),
+    vehicle: Vehicle = Depends(get_current_vehicle),
+    db: Session      = Depends(get_db),
 ):
-    user    = get_mock_user(db)
-    vehicle = get_user_vehicle(db, user)
 
     alert = db.query(Alert).filter(
         Alert.id         == alert_id,
@@ -75,9 +74,10 @@ def mark_read(
 
 # ── Mark all alerts as read ───────────────────────────────────────────────────
 @router.patch("/read-all", response_model=dict)
-def mark_all_read(db: Session = Depends(get_db)):
-    user    = get_mock_user(db)
-    vehicle = get_user_vehicle(db, user)
+def mark_all_read(
+    vehicle: Vehicle = Depends(get_current_vehicle),
+    db: Session      = Depends(get_db),
+):
 
     updated = db.query(Alert).filter(
         Alert.vehicle_id == vehicle.id,

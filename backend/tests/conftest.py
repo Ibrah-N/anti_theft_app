@@ -11,7 +11,7 @@ test_engine = create_engine(TEST_DATABASE_URL)
 TestSessionLocal = sessionmaker(bind=test_engine, autocommit=False, autoflush=False)
 
 from app.core.database import Base, get_db
-from app.models import User, Vehicle, Alert  # noqa: F401
+from app.models import User, Vehicle, Alert, GPSReading  # noqa: F401 ← added GPSReading
 
 Base.metadata.drop_all(bind=test_engine)
 Base.metadata.create_all(bind=test_engine)
@@ -38,31 +38,37 @@ def client():
 
 @pytest.fixture(scope="session")
 def auth_headers(client):
+    # Register user
     client.post(
         "/api/auth/register",
         json={
-            "email": "alerts_user@smartguard.com",
-            "phone": "+9999999999",
+            "email":     "alerts_user@smartguard.com",
+            "phone":     "+9999999999",
             "full_name": "Alerts User",
-            "password": "secure123",
+            "password":  "secure123",
         },
     )
+
+    # Login — get token
     response = client.post(
         "/api/auth/login",
         json={
-            "email": "alerts_user@smartguard.com",
+            "email":    "alerts_user@smartguard.com",
             "password": "secure123",
         },
     )
     token = response.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
 
+    # Register vehicle — must pass headers ← this was the missing piece
     client.post(
         "/api/vehicle/register",
         json={
-            "name": "Test Vehicle",
+            "name":       "Test Vehicle",
             "reg_number": "TEST-001",
-            "device_id": "ESP32-TEST",
+            "device_id":  "ESP32-TEST",
         },
+        headers=headers,   # ← added
     )
 
-    return {"Authorization": f"Bearer {token}"}
+    return headers

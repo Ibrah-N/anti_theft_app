@@ -7,16 +7,18 @@ from datetime import datetime, timezone
 
 from app.core.database import get_db
 from app.models.gps_reading import GPSReading
-from app.routes.vehicle import get_mock_user, get_user_vehicle
+from app.core.dependencies import get_current_vehicle
+from app.models.vehicle import Vehicle
 from app.schemas.gps import GPSReadingCreate, GPSReadingResponse, GPSHistoryResponse
 
 router = APIRouter()
 
 # ── Latest known location ─────────────────────────────────────────────────────
 @router.get("/latest", response_model=GPSReadingResponse)
-def get_latest(db: Session = Depends(get_db)):
-    user    = get_mock_user(db)
-    vehicle = get_user_vehicle(db, user)
+def get_latest(
+    vehicle: Vehicle = Depends(get_current_vehicle),
+    db: Session = Depends(get_db)
+):
 
     latest = (
         db.query(GPSReading)
@@ -35,10 +37,9 @@ def get_latest(db: Session = Depends(get_db)):
 def get_history(
     limit: int  = Query(default=50, le=500),
     offset: int = Query(default=0),
+    vehicle: Vehicle = Depends(get_current_vehicle),
     db: Session = Depends(get_db),
 ):
-    user    = get_mock_user(db)
-    vehicle = get_user_vehicle(db, user)
 
     query = db.query(GPSReading).filter(GPSReading.vehicle_id == vehicle.id)
 
@@ -56,11 +57,9 @@ def get_history(
 @router.post("/", response_model=GPSReadingResponse, status_code=201)
 def record_reading(
     payload: GPSReadingCreate,
+    vehicle: Vehicle = Depends(get_current_vehicle),
     db: Session = Depends(get_db),
 ):
-    user    = get_mock_user(db)
-    vehicle = get_user_vehicle(db, user)
-
     reading = GPSReading(
         vehicle_id = vehicle.id,
         latitude   = payload.latitude,

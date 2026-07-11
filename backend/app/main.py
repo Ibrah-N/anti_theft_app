@@ -8,7 +8,7 @@ from app.core.database import engine, Base
 from app.models import User, Vehicle, Alert
 
 # Import routers
-from app.routes import auth, vehicle, alerts, gps
+from app.routes import auth, vehicle, alerts, gps, ws
 from app.services.mqtt_service import mqtt_service
 from app.services.mqtt_handlers import handle_mqtt_message
 
@@ -48,6 +48,7 @@ app.include_router(auth.router,    prefix="/api/auth",    tags=["Auth"])
 app.include_router(vehicle.router, prefix="/api/vehicle", tags=["Vehicle"])
 app.include_router(alerts.router,  prefix="/api/alerts",  tags=["Alerts"])
 app.include_router(gps.router,    prefix="/api/gps",     tags=["GPS"])
+app.include_router(ws.router, tags=["WebSocket"])
 
 
 

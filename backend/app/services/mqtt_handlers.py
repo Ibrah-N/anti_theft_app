@@ -8,6 +8,10 @@ from app.models.vehicle import Vehicle
 from app.models.alert import Alert, AlertCategory, AlertSeverity
 from app.models.gps_reading import GPSReading
 
+import asyncio
+from app.services.websocket_service import ws_manager
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -93,6 +97,30 @@ def _handle_sensors(db, vehicle, data: dict):
             logger.info(f"Alert created: {label} opened — vehicle {vehicle.id}")
 
     logger.info(f"Sensor update saved — vehicle {vehicle.id}")
+    
+    # ── Push to WebSocket clients ─────────────────────────────────────────────
+    asyncio.run(_broadcast_sensors(vehicle))
+
+
+
+async def _broadcast_sensors(vehicle):
+    await ws_manager.broadcast(vehicle.id, {
+        "type": "sensor_update",
+        "payload": {
+            "zone_fl":     vehicle.zone_fl,
+            "zone_fr":     vehicle.zone_fr,
+            "zone_rl":     vehicle.zone_rl,
+            "zone_rr":     vehicle.zone_rr,
+            "zone_bonnet": vehicle.zone_bonnet,
+            "zone_trunk":  vehicle.zone_trunk,
+        }
+    })
+
+
+
+
+
+
 
 
 # ── GPS handler ───────────────────────────────────────────────────────────────
@@ -142,3 +170,20 @@ def _handle_status(db, vehicle, data: dict):
         vehicle.fuel_flowing  = bool(data["fuel_flowing"])
 
     logger.info(f"Status update saved — vehicle {vehicle.id}")
+
+    # ── Push to WebSocket clients ─────────────────────────────────────────────
+    asyncio.run(_broadcast_status(vehicle))
+
+
+
+async def _broadcast_status(vehicle):
+    await ws_manager.broadcast(vehicle.id, {
+        "type": "status_update",
+        "payload": {
+            "battery_level": vehicle.battery_level,
+            "signal_bars":   vehicle.signal_bars,
+            "engine_on":     vehicle.engine_on,
+            "fuel_flowing":  vehicle.fuel_flowing,
+            "speed_kmh":     vehicle.speed_kmh,
+        }
+    })

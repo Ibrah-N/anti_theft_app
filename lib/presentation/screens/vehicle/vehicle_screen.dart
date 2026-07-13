@@ -6,26 +6,21 @@ import '../../../core/constants/app_colors.dart';
 import '../../../data/models/vehicle_model.dart';
 import '../../widgets/vehicle/car_blueprint_painter.dart';
 import '../../widgets/vehicle/zone_status_card.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../data/providers/vehicle_provider.dart';
 
-class VehicleScreen extends StatefulWidget {
+
+
+class VehicleScreen extends ConsumerStatefulWidget {
   const VehicleScreen({super.key});
 
   @override
-  State<VehicleScreen> createState() => _VehicleScreenState();
+  ConsumerState<VehicleScreen> createState() => _VehicleScreenState();
 }
 
-class _VehicleScreenState extends State<VehicleScreen> {
+class _VehicleScreenState extends ConsumerState<VehicleScreen> {
   // Zone state — true = closed/green, false = open/red
   // In Step 2 this comes from the repository / WebSocket stream
-  Map<CarZone, bool> _zoneStates = {
-    CarZone.bonnet:     true,
-    CarZone.frontLeft:  true,
-    CarZone.frontRight: true,
-    CarZone.rearLeft:   true,
-    CarZone.rearRight:  true,
-    CarZone.trunk:      true,
-  };
-
   static const Map<CarZone, String> _zoneNames = {
     CarZone.bonnet:     'Bonnet',
     CarZone.frontLeft:  'Front Left',
@@ -36,14 +31,37 @@ class _VehicleScreenState extends State<VehicleScreen> {
   };
 
   void _onBlueprintTap(Offset localPos, Size painterSize) {
-    final zone = CarZoneHitTester(painterSize).hitTest(localPos);
-    if (zone != null) {
-      setState(() => _zoneStates[zone] = !(_zoneStates[zone] ?? true));
-    }
+  // TODO hardware phase — tap will send command to device
+    // For now just visual feedback
   }
+
+  // ── Build zone map from provider data ────────────────────────────────────────
+  Map<CarZone, bool> _zonesFromVehicle(VehicleModel vehicle) => {
+    CarZone.bonnet:     vehicle.zones[4].isClosed,
+    CarZone.frontLeft:  vehicle.zones[0].isClosed,
+    CarZone.frontRight: vehicle.zones[1].isClosed,
+    CarZone.rearLeft:   vehicle.zones[2].isClosed,
+    CarZone.rearRight:  vehicle.zones[3].isClosed,
+    CarZone.trunk:      vehicle.zones[5].isClosed,
+  };
 
   @override
   Widget build(BuildContext context) {
+    final vehicleAsync = ref.watch(vehicleProvider);
+
+    return vehicleAsync.when(
+      loading: () => const Center(
+        child: CircularProgressIndicator(color: AppColors.primaryBlue),
+      ),
+      error: (e, _) => Center(
+        child: Text('Error: $e',
+            style: const TextStyle(color: AppColors.statusRed)),
+      ),
+      data: (vehicle) => _buildContent(_zonesFromVehicle(vehicle)),
+    );
+  }
+
+  Widget _buildContent(Map<CarZone, bool> zoneStates) {
     return SafeArea(
       child: CustomScrollView(
         slivers: [
@@ -90,8 +108,7 @@ class _VehicleScreenState extends State<VehicleScreen> {
                             _onBlueprintTap(d.localPosition, painterSize),
                         child: CustomPaint(
                           size: painterSize,
-                          painter:
-                              CarBlueprintPainter(zoneStates: _zoneStates),
+                          painter: CarBlueprintPainter(zoneStates: zoneStates),
                         ),
                       );
                     },
@@ -128,7 +145,7 @@ class _VehicleScreenState extends State<VehicleScreen> {
                 childAspectRatio: 2.4,
               ),
               delegate: SliverChildListDelegate(
-                _zoneStates.entries.map((e) {
+                zoneStates.entries.map((e) {
                   return ZoneStatusCard(
                     zoneName: _zoneNames[e.key]!,
                     isClosed: e.value,

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../data/models/vehicle_model.dart';
 
 // Keys to identify tappable zones
 enum CarZone { bonnet, frontLeft, frontRight, rearLeft, rearRight, trunk }
@@ -20,7 +19,7 @@ class CarBlueprintPainter extends CustomPainter {
     ..maskFilter = MaskFilter.blur(BlurStyle.normal, 4);
 
   Paint _fillPaint(CarZone zone) => Paint()
-    ..color = _zoneColor(zone).withOpacity(0.08)
+    ..color = _zoneColor(zone).withValues(alpha: 0.08)
     ..style = PaintingStyle.fill;
 
   Paint get _bodyPaint => Paint()
@@ -197,7 +196,7 @@ class CarBlueprintPainter extends CustomPainter {
           TextSpan(
             text: sub,
             style: TextStyle(
-              color: color.withOpacity(0.7),
+              color: color.withValues(alpha: 0.7),
               fontSize: 9,
               letterSpacing: 1,
             ),
@@ -257,17 +256,17 @@ class CarZoneHitTester {
     final midY      = (bodyTop + bodyBot) / 2;
 
     if (_inRect(local, Rect.fromLTRB(bodyLeft + 10, h * 0.01, bodyRight - 10, h * 0.23)))
-      return CarZone.bonnet;
+      {return CarZone.bonnet;}
     if (_inRect(local, Rect.fromLTRB(bodyLeft + 10, h * 0.77, bodyRight - 10, h * 0.99)))
-      return CarZone.trunk;
+      {return CarZone.trunk;}
     if (_inRect(local, Rect.fromLTRB(bodyLeft - doorW - 2, bodyTop + 8, bodyLeft - 2, midY - 4)))
-      return CarZone.frontLeft;
+      {return CarZone.frontLeft;}
     if (_inRect(local, Rect.fromLTRB(bodyRight + 2, bodyTop + 8, bodyRight + doorW + 2, midY - 4)))
-      return CarZone.frontRight;
+      {return CarZone.frontRight;}
     if (_inRect(local, Rect.fromLTRB(bodyLeft - doorW - 2, midY + 4, bodyLeft - 2, bodyBot - 8)))
-      return CarZone.rearLeft;
+      {return CarZone.rearLeft;}
     if (_inRect(local, Rect.fromLTRB(bodyRight + 2, midY + 4, bodyRight + doorW + 2, bodyBot - 8)))
-      return CarZone.rearRight;
+      {return CarZone.rearRight;}
     return null;
   }
 

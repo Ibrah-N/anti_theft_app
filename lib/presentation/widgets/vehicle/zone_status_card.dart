@@ -30,7 +30,7 @@ class ZoneStatusCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: color,
               shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: color.withOpacity(0.6), blurRadius: 6)],
+              boxShadow: [BoxShadow(color: color.withValues(alpha: 0.6), blurRadius: 6)],
             ),
           ),
           const SizedBox(width: 12),

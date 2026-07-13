@@ -5,6 +5,8 @@ import '../../../core/constants/app_colors.dart';
 import '../../../data/models/alert_model.dart';
 import '../../widgets/alerts/alert_filter_chip.dart';
 import '../../widgets/alerts/alert_list_tile.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../data/providers/alerts_provider.dart';
 
 const List<AlertCategory?> _kFilters = [
   null,
@@ -16,50 +18,37 @@ const List<AlertCategory?> _kFilters = [
 
 String _filterLabel(AlertCategory? c) => c == null ? 'All' : c.label;
 
-class AlertsScreen extends StatefulWidget {
-  final bool standalone;
-  const AlertsScreen({super.key, this.standalone = true});
+class AlertsScreen extends ConsumerStatefulWidget {
+  const AlertsScreen({super.key});
 
   @override
-  State<AlertsScreen> createState() => _AlertsScreenState();
+  ConsumerState<AlertsScreen> createState() => _AlertsScreenState();
 }
 
-class _AlertsScreenState extends State<AlertsScreen> {
+class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   AlertCategory? _activeFilter;
-  late List<AlertModel> _alerts;
 
-  @override
-  void initState() {
-    super.initState();
-    _alerts = AlertModel.mockList();
-  }
-
-  List<AlertModel> get _filtered => _activeFilter == null
-      ? _alerts
-      : _alerts.where((a) => a.category == _activeFilter).toList();
-
-  int get _unreadCount => _alerts.where((a) => !a.isRead).length;
+  List<AlertModel> _filtered(List<AlertModel> alerts) => _activeFilter == null
+      ? alerts
+      : alerts.where((a) => a.category == _activeFilter).toList();
 
   void _markAsRead(String id) {
-    setState(() {
-      _alerts = _alerts
-          .map((a) => a.id == id ? a.copyWith(isRead: true) : a)
-          .toList();
-    });
+    ref.read(alertsProvider.notifier).markRead(int.parse(id));
   }
 
   void _markAllRead() {
-    setState(() {
-      _alerts = _alerts.map((a) => a.copyWith(isRead: true)).toList();
-    });
+    ref.read(alertsProvider.notifier).markAllRead();
   }
 
   @override
   Widget build(BuildContext context) {
+    final alertsState = ref.watch(alertsProvider);
+
     final content = SafeArea(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Header ──────────────────────────────────────────────────────
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
             child: Row(
@@ -76,11 +65,11 @@ class _AlertsScreenState extends State<AlertsScreen> {
                               fontWeight: FontWeight.w800)),
                       const SizedBox(height: 4),
                       Text(
-                        _unreadCount > 0
-                            ? '$_unreadCount unread alert${_unreadCount > 1 ? 's' : ''}'
+                        alertsState.unreadCount > 0
+                            ? '${alertsState.unreadCount} unread alert${alertsState.unreadCount > 1 ? 's' : ''}'
                             : 'All caught up',
                         style: TextStyle(
-                          color: _unreadCount > 0
+                          color: alertsState.unreadCount > 0
                               ? AppColors.statusRed
                               : AppColors.statusGreen,
                           fontSize: 14,
@@ -90,7 +79,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                     ],
                   ),
                 ),
-                if (_unreadCount > 0)
+                if (alertsState.unreadCount > 0)
                   GestureDetector(
                     onTap: _markAllRead,
                     child: Container(
@@ -112,47 +101,66 @@ class _AlertsScreenState extends State<AlertsScreen> {
             ),
           ),
           const SizedBox(height: 16),
+
+          // ── Filter chips ──────────────────────────────────────────────
           SizedBox(
             height: 40,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               itemCount: _kFilters.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
               itemBuilder: (_, i) {
                 final filter = _kFilters[i];
                 return AlertFilterChip(
                   label: _filterLabel(filter),
                   isActive: _activeFilter == filter,
-                  onTap: () => setState(() => _activeFilter = filter),
+                  onTap: () {
+                    setState(() => _activeFilter = filter);
+                    ref.read(alertsProvider.notifier).load(
+                      category: filter?.label.toLowerCase(),
+                    );
+                  },
                 );
               },
             ),
           ),
           const SizedBox(height: 16),
+
+          // ── Alert list ────────────────────────────────────────────────
           Expanded(
-            child: _filtered.isEmpty
-                ? _buildEmptyState()
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                    itemCount: _filtered.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (_, i) {
-                      final alert = _filtered[i];
-                      return AlertListTile(
-                        alert: alert,
-                        onTap: () => _markAsRead(alert.id),
-                      );
-                    },
-                  ),
+            child: alertsState.isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(
+                        color: AppColors.primaryBlue))
+                : alertsState.error != null
+                    ? Center(
+                        child: Text('Error: ${alertsState.error}',
+                            style: const TextStyle(
+                                color: AppColors.statusRed)))
+                    : _filtered(alertsState.alerts).isEmpty
+                        ? _buildEmptyState()
+                        : ListView.separated(
+                            padding:
+                                const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                            itemCount:
+                                _filtered(alertsState.alerts).length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(height: 10),
+                            itemBuilder: (_, i) {
+                              final alert =
+                                  _filtered(alertsState.alerts)[i];
+                              return AlertListTile(
+                                alert: alert,
+                                onTap: () => _markAsRead(alert.id),
+                              );
+                            },
+                          ),
           ),
         ],
       ),
     );
 
-    if (widget.standalone) {
-      return Scaffold(backgroundColor: AppColors.scaffoldBg, body: content);
-    }
     return content;
   }
 

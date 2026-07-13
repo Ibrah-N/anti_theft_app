@@ -21,7 +21,7 @@ class LocationStatusCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.cardBg.withOpacity(0.92),
+        color: AppColors.cardBg.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.borderColor, width: 1),
       ),

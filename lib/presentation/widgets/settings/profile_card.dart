@@ -75,7 +75,7 @@ class ProfileCard extends StatelessWidget {
               color: AppColors.statusGreenBg,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                  color: AppColors.statusGreen.withOpacity(0.4), width: 1),
+                  color: AppColors.statusGreen.withValues(alpha: 0.4), width: 1),
             ),
             child: Text(
               user.planLabel,

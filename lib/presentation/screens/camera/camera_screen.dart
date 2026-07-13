@@ -108,7 +108,7 @@ class _CameraScreenState extends State<CameraScreen> {
               color: AppColors.statusRedBg,
               borderRadius: BorderRadius.circular(20),
               border:
-                  Border.all(color: AppColors.statusRed.withOpacity(0.4)),
+                  Border.all(color: AppColors.statusRed.withValues(alpha: 0.4)),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Container(
@@ -158,7 +158,7 @@ class _CameraScreenState extends State<CameraScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
             side: isStreaming
-                ? BorderSide(color: AppColors.statusRed.withOpacity(0.4))
+                ? BorderSide(color: AppColors.statusRed.withValues(alpha: 0.4))
                 : BorderSide.none,
           ),
           elevation: 0,

@@ -30,7 +30,7 @@ class LatestAlertCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: _bgColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _accentColor.withOpacity(0.3), width: 1),
+        border: Border.all(color: _accentColor.withValues(alpha: 0.3), width: 1),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -40,7 +40,7 @@ class LatestAlertCard extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: _accentColor.withOpacity(0.2),
+              color: _accentColor.withValues(alpha: 0.2),
               shape: BoxShape.circle,
             ),
             child: Icon(Icons.notifications_active_rounded,

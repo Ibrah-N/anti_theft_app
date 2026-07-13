@@ -18,12 +18,12 @@ class AddressBar extends StatelessWidget {
       margin: const EdgeInsets.all(12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: AppColors.cardBg.withOpacity(0.96),
+        color: AppColors.cardBg.withValues(alpha: 0.96),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.borderColor, width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.4),
+            color: Colors.black.withValues(alpha: 0.4),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),

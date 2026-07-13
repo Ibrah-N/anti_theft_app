@@ -3,7 +3,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../data/models/location_model.dart';
@@ -11,19 +10,19 @@ import '../../widgets/map/car_marker.dart';
 import '../../widgets/map/coordinate_card.dart';
 import '../../widgets/map/location_status_card.dart';
 import '../../widgets/map/address_bar.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../data/providers/location_provider.dart';
 
-class MapScreen extends StatefulWidget {
+class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
 
   @override
-  State<MapScreen> createState() => _MapScreenState();
+  ConsumerState<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> {
+class _MapScreenState extends ConsumerState<MapScreen> {
   bool _isTracking = false;
 
-  // Step 2: replace with stream from FastAPI WebSocket
-  final LocationModel _location = LocationModel.mock();
 
   late final MapController _mapController;
 
@@ -39,10 +38,15 @@ class _MapScreenState extends State<MapScreen> {
     super.dispose();
   }
 
-  void _onTrack() {
+  void _onTrack() async {
     setState(() => _isTracking = !_isTracking);
     if (_isTracking) {
-      _mapController.move(_location.latLng, 16.5);
+      // Request fresh GPS from device
+      await ref.read(locationProvider.notifier).requestLocation();
+      final location = ref.read(locationProvider).valueOrNull;
+      if (location != null) {
+        _mapController.move(location.latLng, 16.5);
+      }
     }
   }
 
@@ -52,11 +56,14 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final locationAsync = ref.watch(locationProvider);
+    final location      = locationAsync.valueOrNull ?? LocationModel.mock();
+
     return SafeArea(
       child: Column(
         children: [
           // ── Header ─────────────────────────────────────────────────────
-          _buildHeader(),
+          _buildHeader(location),
 
           // ── Map fills remaining space ───────────────────────────────────
           Expanded(
@@ -70,7 +77,7 @@ class _MapScreenState extends State<MapScreen> {
                   child: FlutterMap(
                     mapController: _mapController,
                     options: MapOptions(
-                      initialCenter: _location.latLng,
+                      initialCenter: location.latLng,
                       initialZoom: 16.5,
                       minZoom: 10,
                       maxZoom: 19,
@@ -89,11 +96,11 @@ class _MapScreenState extends State<MapScreen> {
                       CircleLayer(
                         circles: [
                           CircleMarker(
-                            point: _location.latLng,
+                            point: location.latLng,
                             radius: 80,
                             useRadiusInMeter: true,
-                            color: AppColors.accentBlue.withOpacity(0.08),
-                            borderColor: AppColors.accentBlue.withOpacity(0.5),
+                            color: AppColors.accentBlue.withValues(alpha: 0.08),
+                            borderColor: AppColors.accentBlue.withValues(alpha: 0.5),
                             borderStrokeWidth: 1.5,
                           ),
                         ],
@@ -101,12 +108,12 @@ class _MapScreenState extends State<MapScreen> {
                       MarkerLayer(
                         markers: [
                           Marker(
-                            point: _location.latLng,
+                            point: location.latLng,
                             width: 48,
                             height: 64,
                             alignment: Alignment.topCenter,
                             child: CarMarkerWidget(
-                              isMoving: _location.status ==
+                              isMoving: location.status ==
                                   VehicleLocationStatus.moving,
                             ),
                           ),
@@ -118,30 +125,49 @@ class _MapScreenState extends State<MapScreen> {
                 Positioned(
                   top: 16, left: 16,
                   child: CoordinateCard(
-                    latitude:  _location.latFormatted,
-                    longitude: _location.lngFormatted,
+                    latitude:  location.latFormatted,
+                    longitude: location.lngFormatted,
                   ),
                 ),
                 Positioned(
                   top: 16, right: 16,
-                  child: LocationStatusCard(location: _location),
+                  child: LocationStatusCard(location: location),
                 ),
                 Positioned(
                   bottom: 0, left: 0, right: 0,
                   child: AddressBar(
-                    location:   _location,
+                    location:   location,
                     onNavigate: _onNavigate,
                   ),
                 ),
               ],
+              // ── Loading overlay when requesting GPS ───────────────
+              
             ),
+          ),
+          if (locationAsync.isLoading)
+                Container(
+                  color: Colors.black.withValues(alpha: 0.4),
+                  child: const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(color: AppColors.primaryBlue),
+                        SizedBox(height: 12),
+                        Text('Requesting GPS...',
+                            style: TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 14)),
+                      ],
+                    ),
+                  ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(LocationModel location) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
       child: Row(
@@ -156,7 +182,7 @@ class _MapScreenState extends State<MapScreen> {
                       fontSize: 26,
                       fontWeight: FontWeight.w800)),
               const SizedBox(height: 3),
-              Text(_location.city,
+              Text(location.city,
                   style: const TextStyle(
                       color: AppColors.accentBlue, fontSize: 13)),
             ],

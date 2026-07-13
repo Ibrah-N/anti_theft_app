@@ -23,7 +23,7 @@ class CarMarkerWidget extends StatelessWidget {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.accentBlue.withOpacity(0.4),
+                  color: AppColors.accentBlue.withValues(alpha: 0.4),
                   blurRadius: 20,
                   spreadRadius: 4,
                 ),
@@ -84,7 +84,7 @@ class _TeardropPainter extends CustomPainter {
       Offset(cx, size.height * 0.32),
       size.width * 0.22,
       Paint()
-        ..color = Colors.white.withOpacity(0.25)
+        ..color = Colors.white.withValues(alpha: 0.25)
         ..style = PaintingStyle.fill,
     );
   }

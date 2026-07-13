@@ -39,7 +39,7 @@ class _GeofenceRingState extends State<GeofenceRing>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _pulse,
-      builder: (_, __) => CustomPaint(
+      builder: (_, _) => CustomPaint(
         painter: _GeofencePainter(pulse: _pulse.value),
       ),
     );
@@ -60,7 +60,7 @@ class _GeofencePainter extends CustomPainter {
       center,
       baseR + pulse * 16,
       Paint()
-        ..color = AppColors.accentBlue.withOpacity((1 - pulse) * 0.12)
+        ..color = AppColors.accentBlue.withValues(alpha: (1 - pulse) * 0.12)
         ..style = PaintingStyle.fill,
     );
 
@@ -73,7 +73,7 @@ class _GeofencePainter extends CustomPainter {
     const gap = 0.35;
     const step = (2 * 3.14159) / segments;
     final paint = Paint()
-      ..color = AppColors.accentBlue.withOpacity(0.6)
+      ..color = AppColors.accentBlue.withValues(alpha: 0.6)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5;
     for (int i = 0; i < segments; i++) {

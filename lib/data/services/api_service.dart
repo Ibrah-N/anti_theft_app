@@ -1,5 +1,4 @@
 // lib/data/services/api_service.dart
-
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/constants/app_constants.dart';
@@ -11,16 +10,15 @@ class ApiService {
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
   late final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl:        AppConstants.apiUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
-      headers: {'Content-Type': 'application/json'},
-    ),
-  )..interceptors.add(
-    InterceptorsWrapper(
+  BaseOptions(
+    baseUrl:        AppConstants.apiUrl,
+    connectTimeout: const Duration(seconds: 10),
+    receiveTimeout: const Duration(seconds: 10),
+    headers: {'Content-Type': 'application/json'},
+  ),
+)..interceptors.addAll([
+  InterceptorsWrapper(
       onRequest: (options, handler) async {
-        // Attach JWT token to every request automatically
         final token = await _storage.read(key: AppConstants.keyAccessToken);
         if (token != null) {
           options.headers['Authorization'] = 'Bearer $token';
@@ -61,7 +59,7 @@ class ApiService {
         );
       },
     ),
-  );
+  ]);
 
   // ── Auth ───────────────────────────────────────────────────────────────────
   Future<Map<String, dynamic>> login(String email, String password) async {
@@ -110,12 +108,15 @@ class ApiService {
     int      limit      = 20,
     int      offset     = 0,
   }) async {
-    final response = await _dio.get('/alerts/', queryParameters: {
-      'category':    category,
+    final params = <String, dynamic>{
       'unread_only': unreadOnly,
-      'limit':  limit,
-      'offset': offset,
-    });
+      'limit':       limit,
+      'offset':      offset,
+    };
+    if (category != null && category.isNotEmpty) {
+      params['category'] = category;
+    }
+    final response = await _dio.get('/alerts/', queryParameters: params);
     return response.data;
   }
 

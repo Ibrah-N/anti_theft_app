@@ -5,6 +5,7 @@ import '../../data/models/vehicle_model.dart';
 import '../services/api_service.dart';
 import '../services/websocket_service.dart';
 
+
 // ── Vehicle state notifier ────────────────────────────────────────────────────
 class VehicleNotifier extends StateNotifier<AsyncValue<VehicleModel>> {
   VehicleNotifier() : super(const AsyncValue.loading()) {
@@ -13,9 +14,8 @@ class VehicleNotifier extends StateNotifier<AsyncValue<VehicleModel>> {
 
   // ── Load initial state from REST + subscribe to WebSocket ─────────────────
   Future<void> _init() async {
-    try {
-      // 1. Load current state from REST
-      final data    = await ApiService.instance.getVehicleStatus();
+  try {
+    final data    = await ApiService.instance.getVehicleStatus();
       state         = AsyncValue.data(VehicleModel.fromJson(data));
 
       // 2. Subscribe to WebSocket for live updates

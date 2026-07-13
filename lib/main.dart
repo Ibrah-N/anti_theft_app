@@ -1,18 +1,75 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'core/constants/app_colors.dart';
+import 'data/providers/auth_provider.dart';
 import 'presentation/screens/auth/login_screen.dart';
+import 'presentation/screens/home/home_screen.dart';
 
-void main() => runApp(const SmartGuardApp());
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
 
-class SmartGuardApp extends StatelessWidget {
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor:          Colors.transparent,
+    statusBarIconBrightness: Brightness.light,
+    statusBarBrightness:     Brightness.dark,
+  ));
+
+  runApp(
+    // ProviderScope is required by Riverpod — wraps the entire app
+    const ProviderScope(
+      child: SmartGuardApp(),
+    ),
+  );
+}
+
+class SmartGuardApp extends ConsumerWidget {
   const SmartGuardApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final authStatus = ref.watch(authProvider);
+
     return MaterialApp(
-      title: 'SmartGuard',
+      title:                    'SmartGuard',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(fontFamily: 'SF Pro Display'),
-      home: const LoginScreen(), // ← was HomeScreen()
+      theme: ThemeData(
+        scaffoldBackgroundColor: AppColors.scaffoldBg,
+        colorScheme: ColorScheme.dark(
+          primary:   AppColors.primaryBlue,
+          secondary: AppColors.accentBlue,
+          surface:   AppColors.cardBg,
+        ),
+        fontFamily: 'SF Pro Display',
+      ),
+      // ── Auth-based routing ─────────────────────────────────────────────────
+      home: switch (authStatus) {
+        AuthStatus.unknown         => const _SplashScreen(),
+        AuthStatus.authenticated   => const HomeScreen(),
+        AuthStatus.unauthenticated => const LoginScreen(),
+      },
+    );
+  }
+}
+
+// ── Splash — shown for ~1 second while checking stored token ──────────────────
+class _SplashScreen extends StatelessWidget {
+  const _SplashScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: AppColors.scaffoldBg,
+      body: Center(
+        child: CircularProgressIndicator(
+          color: AppColors.primaryBlue,
+        ),
+      ),
     );
   }
 }

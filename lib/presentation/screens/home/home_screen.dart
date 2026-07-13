@@ -14,33 +14,55 @@ import '../map/map_screen.dart';
 import '../camera/camera_screen.dart';
 import '../alerts/alerts_screen.dart';
 import '../settings/settings_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../data/providers/vehicle_provider.dart';
 
-class HomeScreen extends StatefulWidget {
+
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _navIndex = 0;
 
-  final VehicleModel _vehicle     = VehicleModel.mock();
-  final AlertModel   _latestAlert = AlertModel.mock();
+  final AlertModel _latestAlert = AlertModel.mock(); // TODO Phase 4D — alerts provider
 
-  void _toggleEngine() { /* TODO Step 2 */ }
-  void _toggleFuel()   { /* TODO Step 2 */ }
+  void _toggleEngine() {
+    ref.read(vehicleProvider.notifier).toggleEngine(
+      !(ref.read(vehicleProvider).valueOrNull?.engineOn ?? false),
+    );
+  }
+
+  void _toggleFuel() {
+    ref.read(vehicleProvider.notifier).toggleFuel(
+      !(ref.read(vehicleProvider).valueOrNull?.fuelFlowing ?? true),
+    );
+  }
 
   // ── Body switcher ─────────────────────────────────────────────────────────
   Widget _buildBody() {
-    switch (_navIndex) {
-      case 0: return _HomeTab(
-          vehicle:        _vehicle,
+  switch (_navIndex) {
+    case 0:
+      final vehicleAsync = ref.watch(vehicleProvider);
+      return vehicleAsync.when(
+        loading: () => const Center(
+          child: CircularProgressIndicator(color: AppColors.primaryBlue),
+        ),
+        error: (e, _) => Center(
+          child: Text('Error: $e',
+              style: const TextStyle(color: AppColors.statusRed)),
+        ),
+        data: (vehicle) => _HomeTab(
+          vehicle:        vehicle,
           latestAlert:    _latestAlert,
           onToggleEngine: _toggleEngine,
           onToggleFuel:   _toggleFuel,
           buildAppBar:    _buildAppBar,
-        );
+        ),
+      );
       case 1: return const VehicleScreen();
       case 2: return const MapScreen();
       case 3: return const CameraScreen();
@@ -80,13 +102,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         letterSpacing: 1.5,
                         fontWeight: FontWeight.w600)),
                 const SizedBox(height: 4),
-                Text(_vehicle.name,
+                Text(ref.watch(vehicleProvider).valueOrNull?.name ?? 'SmartGuard',
                     style: const TextStyle(
                         color: AppColors.textPrimary,
                         fontSize: 24,
                         fontWeight: FontWeight.w800)),
                 const SizedBox(height: 4),
-                Text('Reg: ${_vehicle.regNumber}',
+                Text('Reg: ${ref.watch(vehicleProvider).valueOrNull?.regNumber ?? '---'}',
                     style: const TextStyle(
                         color: AppColors.textSecondary, fontSize: 13)),
               ],
@@ -126,7 +148,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: AppColors.statusGreenBg,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                      color: AppColors.statusGreen.withOpacity(0.4), width: 1),
+                      color: AppColors.statusGreen..withValues(alpha: 0.4), width: 1),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Container(

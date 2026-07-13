@@ -83,10 +83,10 @@ class AlertModel {
 
   Color get borderColor {
     switch (category) {
-      case AlertCategory.engine: return AppColors.accentBlue.withOpacity(0.25);
-      case AlertCategory.gps:    return AppColors.statusGreen.withOpacity(0.25);
-      case AlertCategory.door:   return AppColors.statusAmber.withOpacity(0.25);
-      case AlertCategory.system: return AppColors.statusRed.withOpacity(0.25);
+      case AlertCategory.engine: return AppColors.accentBlue.withValues(alpha: 0.25);
+      case AlertCategory.gps:    return AppColors.statusGreen.withValues(alpha: 0.25);
+      case AlertCategory.door:   return AppColors.statusAmber.withValues(alpha: 0.25);
+      case AlertCategory.system: return AppColors.statusRed.withValues(alpha: 0.25);
     }
   }
 
@@ -150,5 +150,34 @@ class AlertModel {
         timestamp: now.subtract(const Duration(hours: 8)), isRead: true,
       ),
     ];
+  }
+
+
+  // ── fromJson — maps backend response to AlertModel ────────────────────────
+  factory AlertModel.fromJson(Map<String, dynamic> json) => AlertModel(
+    id:          json['id'].toString(),
+    title:       json['title']       as String,
+    description: json['description'] as String,
+    timestamp:   DateTime.parse(json['created_at'] as String),
+    severity:    _severityFromString(json['severity'] as String),
+    category:    _categoryFromString(json['category'] as String),
+    isRead:      json['is_read']     as bool,
+  );
+
+  static AlertSeverity _severityFromString(String value) {
+    switch (value) {
+      case 'critical': return AlertSeverity.critical;
+      case 'warning':  return AlertSeverity.warning;
+      default:         return AlertSeverity.info;
+    }
+  }
+
+  static AlertCategory _categoryFromString(String value) {
+    switch (value) {
+      case 'engine': return AlertCategory.engine;
+      case 'gps':    return AlertCategory.gps;
+      case 'door':   return AlertCategory.door;
+      default:       return AlertCategory.system;
+    }
   }
 }

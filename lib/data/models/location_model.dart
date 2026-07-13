@@ -56,4 +56,16 @@ class LocationModel {
     status: VehicleLocationStatus.parked,
     lastUpdated: DateTime.now().subtract(const Duration(minutes: 2)),
   );
+
+
+  // ── fromJson — maps backend GPS reading to LocationModel ──────────────────
+  factory LocationModel.fromJson(Map<String, dynamic> json) => LocationModel(
+    latitude:             (json['latitude']  as num).toDouble(),
+    longitude:            (json['longitude'] as num).toDouble(),
+    address:              json['address']    as String? ?? '',
+    city:                 json['city']       as String? ?? '',
+    distanceFromHomeKm:   0.0,
+    status:               VehicleLocationStatus.parked,
+    lastUpdated:          DateTime.parse(json['recorded_at'] as String),
+  );
 }

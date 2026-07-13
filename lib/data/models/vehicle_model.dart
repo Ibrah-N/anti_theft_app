@@ -53,4 +53,49 @@ class VehicleModel {
     batteryLevel: 12.6,
     signalBars: 3,
   );
+
+
+  // ── fromJson — maps backend response to VehicleModel ──────────────────────
+  factory VehicleModel.fromJson(Map<String, dynamic> json) => VehicleModel(
+    name:         json['name']          as String,
+    regNumber:    json['reg_number']    as String,
+    isOnline:     true,
+    connectivity: 'GSM+WiFi',
+    batteryVolts: (json['battery_level'] as num).toDouble(),
+    zones: [
+      ZoneStatus(label: 'FL',  isClosed: json['zone_fl']     as bool),
+      ZoneStatus(label: 'FR',  isClosed: json['zone_fr']     as bool),
+      ZoneStatus(label: 'RL',  isClosed: json['zone_rl']     as bool),
+      ZoneStatus(label: 'RR',  isClosed: json['zone_rr']     as bool),
+      ZoneStatus(label: 'BNT', isClosed: json['zone_bonnet'] as bool),
+      ZoneStatus(label: 'TRK', isClosed: json['zone_trunk']  as bool),
+    ],
+    engineOn:     json['engine_on']     as bool,
+    fuelFlowing:  json['fuel_flowing']  as bool,
+    speedKmh:     (json['speed_kmh']    as num).toDouble(),
+    batteryLevel: (json['battery_level'] as num).toDouble(),
+    signalBars:   json['signal_bars']   as int,
+  );
+
+  // ── copyWithJson — merge partial WebSocket update into existing model ──────
+  VehicleModel copyWithJson(Map<String, dynamic> json) => VehicleModel(
+    name:         name,
+    regNumber:    regNumber,
+    isOnline:     isOnline,
+    connectivity: connectivity,
+    batteryVolts: (json['battery_level'] as num?)?.toDouble() ?? batteryVolts,
+    zones: [
+      ZoneStatus(label: 'FL',  isClosed: json['zone_fl']     as bool? ?? zones[0].isClosed),
+      ZoneStatus(label: 'FR',  isClosed: json['zone_fr']     as bool? ?? zones[1].isClosed),
+      ZoneStatus(label: 'RL',  isClosed: json['zone_rl']     as bool? ?? zones[2].isClosed),
+      ZoneStatus(label: 'RR',  isClosed: json['zone_rr']     as bool? ?? zones[3].isClosed),
+      ZoneStatus(label: 'BNT', isClosed: json['zone_bonnet'] as bool? ?? zones[4].isClosed),
+      ZoneStatus(label: 'TRK', isClosed: json['zone_trunk']  as bool? ?? zones[5].isClosed),
+    ],
+    engineOn:     json['engine_on']     as bool?  ?? engineOn,
+    fuelFlowing:  json['fuel_flowing']  as bool?  ?? fuelFlowing,
+    speedKmh:     (json['speed_kmh']    as num?)?.toDouble() ?? speedKmh,
+    batteryLevel: (json['battery_level'] as num?)?.toDouble() ?? batteryLevel,
+    signalBars:   json['signal_bars']   as int?   ?? signalBars,
+  );
 }

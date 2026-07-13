@@ -28,8 +28,37 @@ class ApiService {
         return handler.next(options);
       },
       onError: (error, handler) {
-        // Log errors — Step 5 will add token refresh here
-        return handler.next(error);
+        final status  = error.response?.statusCode;
+        final detail  = error.response?.data?['detail'];
+
+        String message;
+        if (status == 401) {
+          message = 'Invalid email or password';
+        } else if (status == 422) {
+          message = 'Please check your email and password';
+        } else if (status == 403) {
+          message = 'Account is disabled';
+        } else if (status == 404) {
+          message = 'Not found';
+        } else if (status == 500) {
+          message = 'Server error — try again later';
+        } else if (error.type == DioExceptionType.connectionTimeout ||
+                  error.type == DioExceptionType.receiveTimeout) {
+          message = 'Connection timed out — check your network';
+        } else if (error.type == DioExceptionType.connectionError) {
+          message = 'Cannot reach server — check your connection';
+        } else {
+          message = detail?.toString() ?? 'Something went wrong';
+        }
+
+        return handler.reject(
+          DioException(
+            requestOptions: error.requestOptions,
+            response:       error.response,
+            error:          message,
+            type:           error.type,
+          ),
+        );
       },
     ),
   );

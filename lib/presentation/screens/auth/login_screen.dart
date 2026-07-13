@@ -6,16 +6,18 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_dimensions.dart';
 import '../../widgets/common/custom_text_field.dart';
 import '../../widgets/common/custom_button.dart';
-import '../home/home_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../data/providers/auth_provider.dart';
+import 'package:dio/dio.dart';
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey              = GlobalKey<FormState>();
   final _identifierController = TextEditingController();
   final _passwordController   = TextEditingController();
@@ -28,22 +30,35 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _onSignIn() {
+  void _onSignIn() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-
     setState(() => _isLoading = true);
 
-    // TODO Step 2: replace Future.delayed with real auth repository call
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
-      // ── Navigate to Home and remove ALL previous routes ──────────────────
-      // pushAndRemoveUntil ensures the user cannot press Back to get to Login
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-        (route) => false, // remove everything below
+    try {
+      await ref.read(authProvider.notifier).login(
+        _identifierController.text.trim(),
+        _passwordController.text,
       );
-    });
+      // Navigation handled automatically by main.dart auth switch
+    } catch (e) {
+      if (!mounted) return;
+      String message = 'Login failed';
+      if (e is DioException && e.error != null) {
+        message = e.error.toString();
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: AppColors.statusRed,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   void _onBiometric() {

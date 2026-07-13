@@ -7,16 +7,18 @@ import '../../../data/models/user_model.dart';
 import '../../../data/models/settings_model.dart';
 import '../../widgets/settings/profile_card.dart';
 import '../../widgets/settings/settings_section.dart';
-import '../auth/login_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../data/providers/auth_provider.dart';
 
-class SettingsScreen extends StatefulWidget {
+
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   // Step 2: replace with provider / auth repository
   final UserModel        _user   = UserModel.mock();
   final DeviceSettings   _device = DeviceSettings.mock();
@@ -41,14 +43,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: TextStyle(color: AppColors.textSecondary)),
           ),
           TextButton(
-            onPressed: () {
-              // TODO Step 2: clear tokens + navigate to LoginScreen
-              Navigator.pop(context); // close dialog
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-                (route) => false,
-              );
+            onPressed: () async {
+              Navigator.pop(context);
+              await ref.read(authProvider.notifier).signOut();
+              // Navigation handled automatically by main.dart auth switch
             },
             child: const Text('Sign Out',
                 style: TextStyle(color: AppColors.statusRed)),
@@ -204,7 +202,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     color: AppColors.statusRedBg,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                        color: AppColors.statusRed.withOpacity(0.3), width: 1),
+                        color: AppColors.statusRed.withValues(alpha: 0.3), width: 1),
                   ),
                   alignment: Alignment.center,
                   child: const Text('SIGN OUT',

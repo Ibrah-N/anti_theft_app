@@ -27,7 +27,7 @@ MQTT_USERNAME = os.getenv("MQTT_USERNAME")
 MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
 
 # ── Change this to match your registered vehicle's device_id ─────────────────
-DEVICE_ID = "ESP_012"
+DEVICE_ID = "esp-001"
 
 # ── Topics ────────────────────────────────────────────────────────────────────
 TOPIC_SENSORS = f"sg/{DEVICE_ID}/sensors"

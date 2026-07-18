@@ -40,10 +40,10 @@ class MQTTService:
             settings.MQTT_USERNAME,
             settings.MQTT_PASSWORD,
         )
-        self.client.tls_set(
-            cert_reqs=ssl.CERT_REQUIRED,
-            tls_version=ssl.PROTOCOL_TLS_CLIENT,
-        )
+#        self.client.tls_set(
+#            cert_reqs=ssl.CERT_REQUIRED,
+#            tls_version=ssl.PROTOCOL_TLS_CLIENT,
+#        )
         self._connected   = False
         self._db_callback = None   # injected after startup to avoid circular imports
 

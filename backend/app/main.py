@@ -12,6 +12,11 @@ from app.routes import auth, vehicle, alerts, gps, ws
 from app.services.mqtt_service import mqtt_service
 from app.services.mqtt_handlers import handle_mqtt_message
 
+
+import firebase_admin
+from firebase_admin import credentials
+
+
 import logging
 import threading
 import asyncio
@@ -57,6 +62,10 @@ app.include_router(ws.router, tags=["WebSocket"])
 # ── Event Handler ──────────────────────────────────────────────────────────────
 @app.on_event("startup")
 def startup():
+    cred = credentials.Certificate("firebase_credentials.json")
+    firebase_admin.initialize_app(cred)
+    logger.info("Firebase Admin initialized")
+
     from app.services import mqtt_handlers
     mqtt_handlers.main_event_loop = asyncio.get_event_loop()
 

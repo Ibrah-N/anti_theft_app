@@ -131,6 +131,11 @@ class ApiService {
     return response.data;
   }
 
+  // ── FCM ────────────────────────────────────────────────────────────────────
+  Future<void> registerFcmToken(String fcmToken) async {
+    await _dio.post('/auth/fcm-token', data: {'fcm_token': fcmToken});
+  }
+
   // ── GPS ────────────────────────────────────────────────────────────────────
   Future<Map<String, dynamic>> requestGPS() async {
     final response = await _dio.post('/gps/request');

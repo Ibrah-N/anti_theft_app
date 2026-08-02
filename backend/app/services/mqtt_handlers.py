@@ -94,7 +94,9 @@ def _handle_sensors(db, vehicle, data: dict):
                 severity    = AlertSeverity.warning,
             )
             db.add(alert)
+            db.flush()  # assigns alert.id and created_at before broadcasting
             logger.info(f"Alert created: {label} opened — vehicle {vehicle.id}")
+            asyncio.run(_broadcast_alert(vehicle, alert))
 
     logger.info(f"Sensor update saved — vehicle {vehicle.id}")
     
@@ -185,5 +187,21 @@ async def _broadcast_status(vehicle):
             "engine_on":     vehicle.engine_on,
             "fuel_flowing":  vehicle.fuel_flowing,
             "speed_kmh":     vehicle.speed_kmh,
+        }
+    })
+
+
+async def _broadcast_alert(vehicle, alert):
+    created_at = alert.created_at or datetime.now(timezone.utc)
+    await ws_manager.broadcast(vehicle.id, {
+        "type": "alert",
+        "payload": {
+            "id":          alert.id,
+            "title":       alert.title,
+            "description": alert.description,
+            "category":    alert.category.value,
+            "severity":    alert.severity.value,
+            "is_read":     alert.is_read,
+            "created_at":  created_at.isoformat(),
         }
     })

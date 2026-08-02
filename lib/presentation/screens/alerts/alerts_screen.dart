@@ -129,18 +129,31 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
 
           // ── Alert list ────────────────────────────────────────────────
           Expanded(
-            child: alertsState.isLoading
+            child: RefreshIndicator(
+                onRefresh: () => ref.read(alertsProvider.notifier).load(),
+                child: alertsState.isLoading
                 ? const Center(
                     child: CircularProgressIndicator(
                         color: AppColors.primaryBlue))
-                : alertsState.error != null
-                    ? Center(
-                        child: Text('Error: ${alertsState.error}',
-                            style: const TextStyle(
-                                color: AppColors.statusRed)))
+                    : alertsState.error != null
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text('Cannot reach server — check your connection',
+                                  style: TextStyle(color: AppColors.statusRed)),
+                              const SizedBox(height: 12),
+                              TextButton(
+                                onPressed: () => ref.read(alertsProvider.notifier).load(),
+                                child: const Text('Retry'),
+                              ),
+                            ],
+                          ),
+                        )
                     : _filtered(alertsState.alerts).isEmpty
                         ? _buildEmptyState()
                         : ListView.separated(
+                            physics: const AlwaysScrollableScrollPhysics(),
                             padding:
                                 const EdgeInsets.fromLTRB(16, 0, 16, 24),
                             itemCount:
@@ -156,6 +169,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                               );
                             },
                           ),
+          ),
           ),
         ],
       ),

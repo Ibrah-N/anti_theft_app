@@ -35,9 +35,14 @@ TOPIC_GPS     = f"sg/{DEVICE_ID}/gps"
 TOPIC_STATUS  = f"sg/{DEVICE_ID}/status"
 
 # ── Islamabad GPS coordinates (simulate movement around F-8) ─────────────────
-BASE_LAT = 33.6844
-BASE_LNG = 73.0479
+BASE_LAT = 40.6844
+BASE_LNG = 40.0479
 
+# ── Device state ──────────────────────────────────────────────────────────────
+device_state = {
+    "engine_on":    False,
+    "fuel_flowing": True,
+}
 
 # ── MQTT client setup ─────────────────────────────────────────────────────────
 client = mqtt.Client(
@@ -64,7 +69,7 @@ def on_connect(client, userdata, flags, reason_code, properties):
 
 
 # ── Data generators ───────────────────────────────────────────────────────────
-def generate_sensors(open_zone: str = None) -> dict:
+def generate_sensors(open_zone: str = "None") -> dict:
     """
     All zones closed by default.
     Pass open_zone='zone_trunk' to simulate trunk opening etc.
@@ -85,11 +90,11 @@ def generate_sensors(open_zone: str = None) -> dict:
 def generate_gps(step: int) -> dict:
     """Simulate slow movement around base coordinates."""
     return {
-        "latitude":  round(BASE_LAT + step * 0.0001, 6),
-        "longitude": round(BASE_LNG + step * 0.0001, 6),
+        "latitude":  33.901206,
+        "longitude": 71.387076,
         "speed_kmh": round(random.uniform(0, 60), 1),
-        "city":      "Islamabad",
-        "address":   "F-8 Markaz, Islamabad",
+        "city":      "Bara",
+        "address":   "Khyber Agency, KPK",
     }
 
 
@@ -97,8 +102,8 @@ def generate_status() -> dict:
     return {
         "battery_level": round(random.uniform(11.8, 12.8), 1),
         "signal_bars":   random.randint(2, 4),
-        "engine_on":     False,
-        "fuel_flowing":  True,
+        "engine_on":     device_state["engine_on"],     # ← real state
+        "fuel_flowing":  device_state["fuel_flowing"],  # ← real state
     }
 
 
@@ -108,8 +113,26 @@ def on_message(client, userdata, message):
     payload = json.loads(message.payload.decode())
     logger.info(f"📥 Command received → {topic}: {payload}")
 
-    # Respond to GPS request with one reading
-    if topic.endswith("/cmd/gps_request"):
+    # ── Engine command ────────────────────────────────────────────────────────
+    if topic.endswith("/cmd/engine"):
+        device_state["engine_on"] = payload.get("state", False)
+        logger.info(f"🔑 Engine {'ON' if device_state['engine_on'] else 'OFF'}")
+        # Confirm state back to backend immediately
+        status = generate_status()
+        client.publish(TOPIC_STATUS, json.dumps(status), qos=1)
+        logger.info(f"📡 Status confirmed after engine command")
+
+    # ── Fuel command ──────────────────────────────────────────────────────────
+    elif topic.endswith("/cmd/fuel"):
+        device_state["fuel_flowing"] = payload.get("state", True)
+        logger.info(f"⛽ Fuel {'FLOWING' if device_state['fuel_flowing'] else 'CUT'}")
+        # Confirm state back to backend immediately
+        status = generate_status()
+        client.publish(TOPIC_STATUS, json.dumps(status), qos=1)
+        logger.info(f"📡 Status confirmed after fuel command")
+
+    # ── GPS request ───────────────────────────────────────────────────────────
+    elif topic.endswith("/cmd/gps_request"):
         gps_payload = generate_gps(random.randint(0, 100))
         client.publish(TOPIC_GPS, json.dumps(gps_payload), qos=1)
         logger.info(f"📡 GPS sent on request → {gps_payload}")
@@ -143,7 +166,7 @@ def run():
 
             # ── Sensors every 3rd cycle ───────────────────────────────
             if step % 3 == 0:
-                if step % 9 == 0 and step > 0:
+                if step % 2 == 0 and step > 0:
                     open_zone = random.choice([
                         "zone_fl", "zone_fr", "zone_trunk", "zone_bonnet"
                     ])
@@ -153,7 +176,7 @@ def run():
 
                 sensor_payload = generate_sensors(open_zone)
                 client.publish(TOPIC_SENSORS, json.dumps(sensor_payload), qos=1)
-                logger.info(f"📡 SENSORS → {sensor_payload}")
+                logger.info(f"📡 SENSORS → \n {sensor_payload}")
 
             step += 1
             time.sleep(5)

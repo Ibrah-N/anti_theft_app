@@ -54,15 +54,23 @@ dependencies:
 
   web_socket_channel: ^2.4.0
 
+    # Navigate button → opens Google/Apple Maps
+  url_launcher: ^6.3.0
 
+  # User's live location for Navigate/live-tracking
+  geolocator: ^13.0.1
+
+  # Local notifications for alerts
+  flutter_local_notifications: ^18.0.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  url_launcher: ^6.2.0    # for Navigate button → opens Google Maps
 
   riverpod_generator: ^2.3.9
   build_runner: ^2.4.8
+
+  flutter_launcher_icons: ^0.14.1
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -87,6 +95,12 @@ flutter:
     - assets/images/
   #   - images/a_dot_ham.jpeg
 
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/images/app_icon.png"
+  
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 

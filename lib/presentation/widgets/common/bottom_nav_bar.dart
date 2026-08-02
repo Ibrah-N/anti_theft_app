@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 
 class SmartGuardBottomNav extends StatelessWidget {
-  final int currentIndex;
-  final ValueChanged<int> onTap;
+final int currentIndex;
+final ValueChanged<int> onTap;
+final int unreadCount;
 
-  const SmartGuardBottomNav({
-    super.key,
-    required this.currentIndex,
-    required this.onTap,
+const SmartGuardBottomNav({
+super.key,
+required this.currentIndex,
+required this.onTap,
+this.unreadCount = 0,
   });
 
   @override
@@ -39,21 +41,22 @@ class SmartGuardBottomNav extends StatelessWidget {
             icon: Icon(Icons.camera_alt_outlined), label: 'Camera'),
           BottomNavigationBarItem(
             icon: Stack(clipBehavior: Clip.none, children: [
-              const Icon(Icons.notifications_outlined),
-              Positioned(
-                right: -6, top: -4,
-                child: Container(
-                  padding: const EdgeInsets.all(3),
-                  decoration: const BoxDecoration(
-                    color: AppColors.statusRed,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Text('3',
-                      style: TextStyle(color: Colors.white, fontSize: 8,
-                          fontWeight: FontWeight.bold)),
-                ),
-              ),
-            ]),
+            const Icon(Icons.notifications_outlined),
+            if (unreadCount > 0)
+            Positioned(
+            right: -6, top: -4,
+            child: Container(
+            padding: const EdgeInsets.all(3),
+            decoration: const BoxDecoration(
+            color: AppColors.statusRed,
+            shape: BoxShape.circle,
+                              ),
+            child: Text('$unreadCount',
+            style: const TextStyle(color: Colors.white, fontSize: 8,
+            fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                        ]),
             label: 'Alerts',
           ),
           const BottomNavigationBarItem(

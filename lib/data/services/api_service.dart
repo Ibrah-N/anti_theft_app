@@ -12,8 +12,8 @@ class ApiService {
   late final Dio _dio = Dio(
   BaseOptions(
     baseUrl:        AppConstants.apiUrl,
-    connectTimeout: const Duration(seconds: 10),
-    receiveTimeout: const Duration(seconds: 10),
+    connectTimeout: const Duration(seconds: 5),
+    receiveTimeout: const Duration(seconds: 5),
     headers: {'Content-Type': 'application/json'},
   ),
 )..interceptors.addAll([
@@ -59,6 +59,7 @@ class ApiService {
         );
       },
     ),
+    _RetryOnColdStartInterceptor(),
   ]);
 
   // ── Auth ───────────────────────────────────────────────────────────────────
@@ -150,5 +151,36 @@ class ApiService {
       'offset': offset,
     });
     return response.data;
+  }
+}
+
+
+class _RetryOnColdStartInterceptor extends Interceptor {
+  static const int maxRetries = 3;
+
+  @override
+  void onError(DioException err, ErrorInterceptorHandler handler) async {
+    final options = err.requestOptions;
+    final isGet = options.method.toUpperCase() == 'GET';
+    final isRetryable = err.type == DioExceptionType.connectionError ||
+        err.type == DioExceptionType.connectionTimeout ||
+        err.type == DioExceptionType.receiveTimeout;
+
+    final retryCount = (options.extra['retryCount'] ?? 0) as int;
+
+    if (isGet && isRetryable && retryCount < maxRetries) {
+      final delaySeconds = 1 << retryCount; // 1s, 2s, 4s
+      await Future.delayed(Duration(seconds: delaySeconds));
+
+      options.extra['retryCount'] = retryCount + 1;
+      try {
+        final response = await ApiService.instance._dio.fetch(options);
+        return handler.resolve(response);
+      } catch (_) {
+        return handler.next(err); // give up after this attempt fails too
+      }
+    }
+
+    return handler.next(err);
   }
 }

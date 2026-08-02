@@ -54,8 +54,18 @@ class _VehicleScreenState extends ConsumerState<VehicleScreen> {
         child: CircularProgressIndicator(color: AppColors.primaryBlue),
       ),
       error: (e, _) => Center(
-        child: Text('Error: $e',
-            style: const TextStyle(color: AppColors.statusRed)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Cannot reach server — check your connection',
+                style: TextStyle(color: AppColors.statusRed)),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () => ref.read(vehicleProvider.notifier).retry(),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
       ),
       data: (vehicle) => _buildContent(_zonesFromVehicle(vehicle)),
     );
@@ -63,7 +73,9 @@ class _VehicleScreenState extends ConsumerState<VehicleScreen> {
 
   Widget _buildContent(Map<CarZone, bool> zoneStates) {
     return SafeArea(
-      child: CustomScrollView(
+      child: RefreshIndicator(
+        onRefresh: () => ref.read(vehicleProvider.notifier).retry(),
+        child: CustomScrollView(
         slivers: [
           // ── Header ──────────────────────────────────────────────────────
           const SliverToBoxAdapter(
@@ -157,6 +169,7 @@ class _VehicleScreenState extends ConsumerState<VehicleScreen> {
 
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
+      ),
       ),
     );
   }

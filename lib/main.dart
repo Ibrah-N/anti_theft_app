@@ -5,14 +5,18 @@ import 'core/constants/app_colors.dart';
 import 'data/providers/auth_provider.dart';
 import 'presentation/screens/auth/login_screen.dart';
 import 'presentation/screens/home/home_screen.dart';
+import 'data/services/notification_service.dart';
 
-void main() {
+
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  await NotificationService.instance.init();
+
   SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+  DeviceOrientation.portraitUp,
+  DeviceOrientation.portraitDown,
+    ]);
 
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor:          Colors.transparent,

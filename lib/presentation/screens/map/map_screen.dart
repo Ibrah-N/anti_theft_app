@@ -13,6 +13,12 @@ import '../../widgets/map/address_bar.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/providers/location_provider.dart';
 
+import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../../data/providers/user_location_provider.dart';
+import 'package:latlong2/latlong.dart';
+
+
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
 
@@ -50,20 +56,74 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
-  void _onNavigate() {
-    // TODO Step 2: url_launcher → Google Maps / Apple Maps
+  Future<void> _onNavigate(LocationModel carLocation) async {
+    // Start showing the user's own live position on the map
+    ref.read(userLocationProvider.notifier).startTracking();
+
+    // Open native Maps app for turn-by-turn directions to the car
+    final uri = Uri.parse(
+        'geo:${carLocation.latitude},${carLocation.longitude}?q=${carLocation.latitude},${carLocation.longitude}');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final locationAsync = ref.watch(locationProvider);
-    final location      = locationAsync.valueOrNull ?? LocationModel.mock();
+    final location      = locationAsync.valueOrNull;
+
+    if (locationAsync.hasError) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Cannot reach server — check your connection',
+                style: TextStyle(color: AppColors.statusRed)),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () => ref.read(locationProvider.notifier).requestLocation(),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (location == null) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: AppColors.primaryBlue),
+            SizedBox(height: 12),
+            Text('Fetching GPS location...',
+                style: TextStyle(color: AppColors.textPrimary, fontSize: 14)),
+          ],
+        ),
+      );
+    }
+
+    final loc = location;
+
+    final userPosition = ref.watch(userLocationProvider).valueOrNull;
+
+    double? distanceKm;
+    if (userPosition != null) {
+      distanceKm = Geolocator.distanceBetween(
+            userPosition.latitude,
+            userPosition.longitude,
+            loc.latitude,
+            loc.longitude,
+          ) /
+          1000;
+    }
 
     return SafeArea(
       child: Column(
         children: [
           // ── Header ─────────────────────────────────────────────────────
-          _buildHeader(location),
+          _buildHeader(loc),
 
           // ── Map fills remaining space ───────────────────────────────────
           Expanded(
@@ -77,7 +137,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   child: FlutterMap(
                     mapController: _mapController,
                     options: MapOptions(
-                      initialCenter: location.latLng,
+                      initialCenter: loc.latLng,
                       initialZoom: 16.5,
                       minZoom: 10,
                       maxZoom: 19,
@@ -96,7 +156,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       CircleLayer(
                         circles: [
                           CircleMarker(
-                            point: location.latLng,
+                            point: loc.latLng,
                             radius: 80,
                             useRadiusInMeter: true,
                             color: AppColors.accentBlue.withValues(alpha: 0.08),
@@ -108,7 +168,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       MarkerLayer(
                         markers: [
                           Marker(
-                            point: location.latLng,
+                            point: loc.latLng,
                             width: 48,
                             height: 64,
                             alignment: Alignment.topCenter,
@@ -117,6 +177,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                                   VehicleLocationStatus.moving,
                             ),
                           ),
+                          if (userPosition != null)
+                            Marker(
+                              point: LatLng(
+                                  userPosition.latitude, userPosition.longitude),
+                              width: 24,
+                              height: 24,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: AppColors.accentBlue,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                      color: Colors.white, width: 2),
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ],
@@ -125,19 +200,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 Positioned(
                   top: 16, left: 16,
                   child: CoordinateCard(
-                    latitude:  location.latFormatted,
-                    longitude: location.lngFormatted,
+                    latitude:  loc.latFormatted,
+                    longitude: loc.lngFormatted,
                   ),
                 ),
                 Positioned(
                   top: 16, right: 16,
-                  child: LocationStatusCard(location: location),
+                  child: LocationStatusCard(location: loc),
                 ),
                 Positioned(
                   bottom: 0, left: 0, right: 0,
                   child: AddressBar(
-                    location:   location,
-                    onNavigate: _onNavigate,
+                    location:   loc,
+                    distanceKm: distanceKm,
+                    onNavigate: () => _onNavigate(loc),
                   ),
                 ),
               ],

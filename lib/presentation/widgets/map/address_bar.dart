@@ -3,13 +3,15 @@ import '../../../core/constants/app_colors.dart';
 import '../../../data/models/location_model.dart';
 
 class AddressBar extends StatelessWidget {
-  final LocationModel location;
-  final VoidCallback onNavigate;
+final LocationModel location;
+final double? distanceKm;
+final VoidCallback onNavigate;
 
-  const AddressBar({
-    super.key,
-    required this.location,
-    required this.onNavigate,
+const AddressBar({
+super.key,
+required this.location,
+this.distanceKm,
+required this.onNavigate,
   });
 
   @override
@@ -55,9 +57,11 @@ class AddressBar extends StatelessWidget {
                         fontWeight: FontWeight.w700)),
                 const SizedBox(height: 2),
                 Text(
-                  '${location.distanceFromHomeKm.toStringAsFixed(1)} km from home base',
-                  style: const TextStyle(
-                      color: AppColors.textSecondary, fontSize: 12),
+                    distanceKm != null
+                        ? '${distanceKm!.toStringAsFixed(1)} km from you'
+                        : '${location.distanceFromHomeKm.toStringAsFixed(1)} km from home base',
+                    style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 12),
                 ),
               ],
             ),

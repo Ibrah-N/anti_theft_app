@@ -3,11 +3,9 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../data/models/vehicle_model.dart';
-import '../../../data/models/alert_model.dart';
 import '../../widgets/home/vehicle_status_card.dart';
 import '../../widgets/home/quick_control_card.dart';
 import '../../widgets/home/stat_card.dart';
-import '../../widgets/home/latest_alert_card.dart';
 import '../../widgets/common/bottom_nav_bar.dart';
 import '../vehicle/vehicle_screen.dart';
 import '../map/map_screen.dart';
@@ -16,6 +14,8 @@ import '../alerts/alerts_screen.dart';
 import '../settings/settings_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/providers/vehicle_provider.dart';
+import '../../../data/providers/alerts_provider.dart';
+
 
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -25,10 +25,29 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObserver {
   int _navIndex = 0;
 
-  final AlertModel _latestAlert = AlertModel.mock(); // TODO Phase 4D — alerts provider
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState appState) {
+    if (appState == AppLifecycleState.resumed) {
+      ref.read(vehicleProvider.notifier).retry();
+      ref.read(alertsProvider.notifier).load();
+    }
+  }
+
 
   void _toggleEngine() {
     ref.read(vehicleProvider.notifier).toggleEngine(
@@ -52,15 +71,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           child: CircularProgressIndicator(color: AppColors.primaryBlue),
         ),
         error: (e, _) => Center(
-          child: Text('Error: $e',
-              style: const TextStyle(color: AppColors.statusRed)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Cannot reach server — check your connection',
+                  style: TextStyle(color: AppColors.statusRed)),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => ref.read(vehicleProvider.notifier).retry(),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
         ),
         data: (vehicle) => _HomeTab(
           vehicle:        vehicle,
-          latestAlert:    _latestAlert,
           onToggleEngine: _toggleEngine,
           onToggleFuel:   _toggleFuel,
           buildAppBar:    _buildAppBar,
+          onRefresh:      () => ref.read(vehicleProvider.notifier).retry(),
         ),
       );
       case 1: return const VehicleScreen();
@@ -80,6 +109,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       bottomNavigationBar: SmartGuardBottomNav(
         currentIndex: _navIndex,
         onTap: (i) => setState(() => _navIndex = i),
+        unreadCount: ref.watch(alertsProvider).unreadCount,
       ),
     );
   }
@@ -117,30 +147,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Stack(clipBehavior: Clip.none, children: [
-                Container(
-                  width: 40, height: 40,
-                  decoration: BoxDecoration(
-                      color: AppColors.cardBg,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.borderColor)),
-                  child: const Icon(Icons.notifications_outlined,
-                      color: AppColors.textSecondary, size: 20),
-                ),
-                Positioned(
-                  right: -2, top: -2,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                        color: AppColors.statusRed, shape: BoxShape.circle),
-                    child: const Text('3',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold)),
+              GestureDetector(
+                onTap: () => setState(() => _navIndex = 4),
+                child: Stack(clipBehavior: Clip.none, children: [
+                  Container(
+                    width: 40, height: 40,
+                    decoration: BoxDecoration(
+                        color: AppColors.cardBg,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppColors.borderColor)),
+                    child: const Icon(Icons.notifications_outlined,
+                        color: AppColors.textSecondary, size: 20),
                   ),
-                ),
-              ]),
+                  if (ref.watch(alertsProvider).unreadCount > 0)
+                    Positioned(
+                      right: -2, top: -2,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                            color: AppColors.statusRed, shape: BoxShape.circle),
+                        child: Text('${ref.watch(alertsProvider).unreadCount}',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                ]),
+              ),
               const SizedBox(height: 10),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
@@ -174,23 +208,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 // ── Home tab ──────────────────────────────────────────────────────────────────
 class _HomeTab extends StatelessWidget {
   final VehicleModel   vehicle;
-  final AlertModel     latestAlert;
   final VoidCallback   onToggleEngine;
   final VoidCallback   onToggleFuel;
+  
   final Widget Function() buildAppBar;
+  final Future<void> Function() onRefresh;
 
   const _HomeTab({
     required this.vehicle,
-    required this.latestAlert,
     required this.onToggleEngine,
     required this.onToggleFuel,
     required this.buildAppBar,
+    required this.onRefresh,
   });
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: CustomScrollView(
+      child: RefreshIndicator(
+        onRefresh: onRefresh,
+        child: CustomScrollView(
         slivers: [
           SliverToBoxAdapter(child: buildAppBar()),
           SliverPadding(
@@ -255,20 +292,12 @@ class _HomeTab extends StatelessWidget {
                   )),
                 ]),
                 const SizedBox(height: 24),
-                const Text('LATEST ALERT',
-                    style: TextStyle(
-                        color: AppColors.labelColor,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 1.5)),
-                const SizedBox(height: 12),
-                LatestAlertCard(alert: latestAlert),
-                const SizedBox(height: 24),
               ]),
             ),
           ),
-        ],
-      ),
+          ],
+        ),
+      ), 
     );
   }
 }

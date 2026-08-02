@@ -5,7 +5,9 @@ import '../../data/models/location_model.dart';
 import '../services/api_service.dart';
 
 class LocationNotifier extends StateNotifier<AsyncValue<LocationModel?>> {
-  LocationNotifier() : super(const AsyncValue.data(null));
+  LocationNotifier() : super(const AsyncValue.loading()) {
+  requestLocation();
+  }
 
   // ── Request live GPS from device ──────────────────────────────────────────
   Future<void> requestLocation() async {

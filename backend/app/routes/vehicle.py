@@ -8,6 +8,7 @@ from app.models.alert import Alert, AlertCategory, AlertSeverity
 from app.core.dependencies import get_current_user, get_current_vehicle
 from app.models.user import User
 from app.models.vehicle import Vehicle
+from app.services.mqtt_service import mqtt_service
 
 from app.schemas.vehicle import VehicleResponse, VehicleRegister, CommandPayload
 
@@ -47,51 +48,39 @@ def get_status(vehicle: Vehicle = Depends(get_current_vehicle)):
     return vehicle
 
 # ── Engine control ────────────────────────────────────────────────────────────
-@router.post("/engine", response_model=VehicleResponse)
+@router.post("/engine", response_model=dict)
 def control_engine(
     payload: CommandPayload,
     vehicle: Vehicle = Depends(get_current_vehicle),
     db: Session = Depends(get_db),
 ):
-    vehicle.engine_on = payload.state
-    db.commit()
-    db.refresh(vehicle)
+    if not mqtt_service.is_connected:
+        raise HTTPException(status_code=503, detail="Device not connected")
 
-    if not payload.state:
-        alert = Alert(
-            vehicle_id  = vehicle.id,
-            title       = "Engine disabled remotely",
-            description = "Engine cutoff triggered via SmartGuard app",
-            category    = AlertCategory.engine,
-            severity    = AlertSeverity.warning,
-        )
-        db.add(alert)
-        db.commit()
+    # Publish command to device — don't save to DB yet
+    mqtt_service.publish_engine_command(vehicle.device_id, payload.state)
 
-    return vehicle
+    return {
+        "message": f"Engine command sent to device",
+        "state":   payload.state,
+        "device":  vehicle.device_id,
+    }
 
 
 # ── Fuel control ──────────────────────────────────────────────────────────────
-@router.post("/fuel", response_model=VehicleResponse)
+@router.post("/fuel", response_model=dict)
 def control_fuel(
     payload: CommandPayload,
     vehicle: Vehicle = Depends(get_current_vehicle),
     db: Session = Depends(get_db),
 ):
-    vehicle.fuel_flowing = payload.state
-    db.commit()
-    db.refresh(vehicle)
+    if not mqtt_service.is_connected:
+        raise HTTPException(status_code=503, detail="Device not connected")
 
-    # Log alert when fuel is cut remotely
-    if not payload.state:
-        alert = Alert(
-            vehicle_id  = vehicle.id,
-            title       = "Fuel cutoff activated",
-            description = "Fuel supply cut via SmartGuard app",
-            category    = AlertCategory.engine,
-            severity    = AlertSeverity.warning,
-        )
-        db.add(alert)
-        db.commit()
+    mqtt_service.publish_fuel_command(vehicle.device_id, payload.state)
 
-    return vehicle
+    return {
+        "message": f"Fuel command sent to device",
+        "state":   payload.state,
+        "device":  vehicle.device_id,
+    }

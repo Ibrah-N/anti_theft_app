@@ -161,7 +161,7 @@ class AlertModel {
     timestamp:   DateTime.parse(json['created_at'] as String),
     severity:    _severityFromString(json['severity'] as String),
     category:    _categoryFromString(json['category'] as String),
-    isRead:      json['is_read']     as bool,
+    isRead:      json['is_read']     as bool? ?? false,
   );
 
   static AlertSeverity _severityFromString(String value) {

@@ -26,7 +26,8 @@ class WebSocketManager:
 
     def disconnect(self, vehicle_id: int, websocket: WebSocket):
         if vehicle_id in self._connections:
-            self._connections[vehicle_id].discard(websocket)
+            if websocket in self._connections[vehicle_id]:
+                self._connections[vehicle_id].remove(websocket)
             logger.info(f"WebSocket disconnected — vehicle {vehicle_id}")
 
     async def broadcast(self, vehicle_id: int, message: dict):

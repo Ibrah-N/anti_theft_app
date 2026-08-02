@@ -41,6 +41,13 @@ def _send_push_notification(db, vehicle, title: str, body: str):
         try:
             message = messaging.Message(
                 notification=messaging.Notification(title=title, body=body),
+                android=messaging.AndroidConfig(
+                    priority="high",
+                    notification=messaging.AndroidNotification(
+                        channel_id="alerts_channel",
+                        sound="default",
+                    ),
+                ),
                 token=device.fcm_token,
             )
             messaging.send(message)

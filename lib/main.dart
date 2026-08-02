@@ -10,6 +10,7 @@ import 'data/services/notification_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,10 +20,10 @@ void main() async {
 
   // Request FCM permission and print the device token for testing
   final fcmPermission = await FirebaseMessaging.instance.requestPermission();
-  print('FCM permission status: ${fcmPermission.authorizationStatus}');
+  // print('FCM permission status: ${fcmPermission.authorizationStatus}');
 
   final fcmToken = await FirebaseMessaging.instance.getToken();
-  print('FCM TOKEN: $fcmToken');
+  // print('FCM TOKEN: $fcmToken');
 
   SystemChrome.setPreferredOrientations([
   DeviceOrientation.portraitUp,

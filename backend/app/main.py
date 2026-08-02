@@ -14,6 +14,7 @@ from app.services.mqtt_handlers import handle_mqtt_message
 
 import logging
 import threading
+import asyncio
 
 
 
@@ -56,6 +57,9 @@ app.include_router(ws.router, tags=["WebSocket"])
 # ── Event Handler ──────────────────────────────────────────────────────────────
 @app.on_event("startup")
 def startup():
+    from app.services import mqtt_handlers
+    mqtt_handlers.main_event_loop = asyncio.get_event_loop()
+
     thread = threading.Thread(target=mqtt_service.connect, daemon=True)
     thread.start()
     mqtt_service.set_db_callback(handle_mqtt_message)

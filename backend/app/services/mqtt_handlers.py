@@ -14,6 +14,18 @@ from app.services.websocket_service import ws_manager
 
 logger = logging.getLogger(__name__)
 
+# Set by app.main on startup — the FastAPI/uvicorn event loop that owns all WebSocket connections
+main_event_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _broadcast_threadsafe(coro):
+    """Schedule a broadcast coroutine on the main event loop from this MQTT thread."""
+    if main_event_loop is None:
+        logger.error("main_event_loop not set — cannot broadcast")
+        return
+    asyncio.run_coroutine_threadsafe(coro, main_event_loop)
+
+
 
 def handle_mqtt_message(msg_type: str, device_id: str, data: dict):
     """
@@ -96,12 +108,12 @@ def _handle_sensors(db, vehicle, data: dict):
             db.add(alert)
             db.flush()  # assigns alert.id and created_at before broadcasting
             logger.info(f"Alert created: {label} opened — vehicle {vehicle.id}")
-            asyncio.run(_broadcast_alert(vehicle, alert))
+            _broadcast_threadsafe(_broadcast_alert(vehicle, alert))
 
     logger.info(f"Sensor update saved — vehicle {vehicle.id}")
     
     # ── Push to WebSocket clients ─────────────────────────────────────────────
-    asyncio.run(_broadcast_sensors(vehicle))
+    _broadcast_threadsafe(_broadcast_sensors(vehicle))
 
 
 
@@ -117,10 +129,6 @@ async def _broadcast_sensors(vehicle):
             "zone_trunk":  vehicle.zone_trunk,
         }
     })
-
-
-
-
 
 
 
@@ -174,8 +182,7 @@ def _handle_status(db, vehicle, data: dict):
     logger.info(f"Status update saved — vehicle {vehicle.id}")
 
     # ── Push to WebSocket clients ─────────────────────────────────────────────
-    asyncio.run(_broadcast_status(vehicle))
-
+    _broadcast_threadsafe(_broadcast_status(vehicle))
 
 
 async def _broadcast_status(vehicle):

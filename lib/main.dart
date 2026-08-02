@@ -7,16 +7,27 @@ import 'presentation/screens/auth/login_screen.dart';
 import 'presentation/screens/home/home_screen.dart';
 import 'data/services/notification_service.dart';
 
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  await Firebase.initializeApp();
   await NotificationService.instance.init();
+
+  // Request FCM permission and print the device token for testing
+  final fcmPermission = await FirebaseMessaging.instance.requestPermission();
+  print('FCM permission status: ${fcmPermission.authorizationStatus}');
+
+  final fcmToken = await FirebaseMessaging.instance.getToken();
+  print('FCM TOKEN: $fcmToken');
 
   SystemChrome.setPreferredOrientations([
   DeviceOrientation.portraitUp,
   DeviceOrientation.portraitDown,
-    ]);
+ ]);
 
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor:          Colors.transparent,

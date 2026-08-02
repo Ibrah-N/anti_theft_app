@@ -11,6 +11,10 @@ from app.core.security import (
 from app.models.user import User
 from app.schemas.auth import UserRegister, UserLogin, TokenResponse, UserResponse
 
+from app.core.dependencies import get_current_user
+from app.models.device_token import DeviceToken
+from pydantic import BaseModel
+
 router = APIRouter()
 
 # ── Register ──────────────────────────────────────────────────────────────────
@@ -69,3 +73,27 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
 def get_me(db: Session = Depends(get_db), token: str = ""):
     # TODO Step 3: replace with real JWT dependency
     raise HTTPException(status_code=501, detail="Auth middleware coming in Step 3")
+
+
+# ── Register/update FCM device token ──────────────────────────────────────────
+class FcmTokenPayload(BaseModel):
+    fcm_token: str
+
+
+@router.post("/fcm-token", status_code=200)
+def register_fcm_token(
+    payload: FcmTokenPayload,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    existing = db.query(DeviceToken).filter(
+        DeviceToken.fcm_token == payload.fcm_token
+    ).first()
+
+    if existing:
+        existing.user_id = user.id
+    else:
+        db.add(DeviceToken(user_id=user.id, fcm_token=payload.fcm_token))
+
+    db.commit()
+    return {"status": "registered"}

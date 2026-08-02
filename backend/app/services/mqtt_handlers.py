@@ -11,6 +11,8 @@ from app.models.gps_reading import GPSReading
 import asyncio
 from app.services.websocket_service import ws_manager
 
+from firebase_admin import messaging
+from app.models.device_token import DeviceToken
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,25 @@ def _broadcast_threadsafe(coro):
         return
     asyncio.run_coroutine_threadsafe(coro, main_event_loop)
 
+
+def _send_push_notification(db, vehicle, title: str, body: str):
+    """Send an FCM push to every device registered to this vehicle's owner."""
+    tokens = db.query(DeviceToken).filter(
+        DeviceToken.user_id == vehicle.owner_id
+    ).all()
+
+    if not tokens:
+        return
+
+    for device in tokens:
+        try:
+            message = messaging.Message(
+                notification=messaging.Notification(title=title, body=body),
+                token=device.fcm_token,
+            )
+            messaging.send(message)
+        except Exception as e:
+            logger.error(f"FCM push failed for token {device.fcm_token[:20]}...: {e}")
 
 
 def handle_mqtt_message(msg_type: str, device_id: str, data: dict):
@@ -109,6 +130,7 @@ def _handle_sensors(db, vehicle, data: dict):
             db.flush()  # assigns alert.id and created_at before broadcasting
             logger.info(f"Alert created: {label} opened — vehicle {vehicle.id}")
             _broadcast_threadsafe(_broadcast_alert(vehicle, alert))
+            _send_push_notification(db, vehicle, alert.title, alert.description)
 
     logger.info(f"Sensor update saved — vehicle {vehicle.id}")
     

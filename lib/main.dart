@@ -12,10 +12,21 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 
+
+
+@pragma('vm:entry-point')
+Future<void> _firebaseBackgroundHandler(RemoteMessage message) async {
+  // Required registration so Android properly wakes the app's background
+  // isolate to process FCM messages when the app is fully closed.
+  // No manual notification display needed here — Android auto-renders
+  // the system notification using the channel_id set by the backend.
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp();
+ await Firebase.initializeApp();
+  FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
   await NotificationService.instance.init();
 
   // Request FCM permission and print the device token for testing
@@ -37,12 +48,26 @@ void main() async {
   ));
 
   runApp(
-    // ProviderScope is required by Riverpod — wraps the entire app
-    const ProviderScope(
-      child: SmartGuardApp(),
+// ProviderScope is required by Riverpod — wraps the entire app
+const ProviderScope(
+child: SmartGuardApp(),
     ),
   );
+
+  // Handle the case where the app was fully closed and opened via notification tap
+  final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+  if (initialMessage != null) {
+    pendingAlertNavigation = true;
+  }
+
+  // Handle the case where the app was backgrounded (not closed) and opened via notification tap
+  FirebaseMessaging.onMessageOpenedApp.listen((message) {
+    pendingAlertNavigation = true;
+  });
 }
+
+// Global flag — checked by HomeScreen on build to know if it should jump to Alerts + force refresh
+bool pendingAlertNavigation = false;
 
 class SmartGuardApp extends ConsumerWidget {
   const SmartGuardApp({super.key});

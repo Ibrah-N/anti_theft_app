@@ -68,6 +68,37 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
     )
 
 
+# ── Refresh access token ───────────────────────────────────────────────────────
+class RefreshPayload(BaseModel):
+    refresh_token: str
+
+
+@router.post("/refresh", response_model=TokenResponse)
+def refresh(payload: RefreshPayload, db: Session = Depends(get_db)):
+    from app.core.security import decode_token, create_access_token, create_refresh_token
+
+    token_data = decode_token(payload.refresh_token)
+    if token_data is None or token_data.get("type") != "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+
+    user_id = token_data.get("sub")
+    user = db.query(User).filter(User.id == int(user_id)).first()
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or disabled",
+        )
+
+    new_token_data = {"sub": str(user.id)}
+    return TokenResponse(
+        access_token=create_access_token(new_token_data),
+        refresh_token=create_refresh_token(new_token_data),
+    )
+
+
 # ── Get current user (protected route example) ────────────────────────────────
 @router.get("/me", response_model=UserResponse)
 def get_me(db: Session = Depends(get_db), token: str = ""):

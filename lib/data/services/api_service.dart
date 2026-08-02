@@ -62,6 +62,25 @@ class ApiService {
     _RetryOnColdStartInterceptor(),
   ]);
 
+  // ── Token refresh (called internally by retry interceptor) ─────────────────
+  Future<bool> _refreshToken() async {
+    try {
+      final refreshToken = await _storage.read(key: AppConstants.keyRefreshToken);
+      if (refreshToken == null) return false;
+
+      final response = await Dio(BaseOptions(baseUrl: AppConstants.apiUrl)).post(
+        '/auth/refresh',
+        data: {'refresh_token': refreshToken},
+      );
+
+      await _storage.write(key: AppConstants.keyAccessToken, value: response.data['access_token']);
+      await _storage.write(key: AppConstants.keyRefreshToken, value: response.data['refresh_token']);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // ── Auth ───────────────────────────────────────────────────────────────────
   Future<Map<String, dynamic>> login(String email, String password) async {
     final response = await _dio.post('/auth/login', data: {
@@ -166,26 +185,39 @@ class _RetryOnColdStartInterceptor extends Interceptor {
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
     final options = err.requestOptions;
+
+    // ── 401 → try silent token refresh, then retry original request once ──
+    if (err.response?.statusCode == 401 && options.extra['isRefreshRetry'] != true) {
+      final refreshed = await ApiService.instance._refreshToken();
+      if (refreshed) {
+        options.extra['isRefreshRetry'] = true;
+        try {
+          final response = await ApiService.instance._dio.fetch(options);
+          return handler.resolve(response);
+        } catch (_) {
+          return handler.next(err);
+        }
+      }
+      return handler.next(err);
+    }
+
+    // ── Connection errors → retry with backoff (existing behavior) ──
     final isGet = options.method.toUpperCase() == 'GET';
     final isRetryable = err.type == DioExceptionType.connectionError ||
         err.type == DioExceptionType.connectionTimeout ||
         err.type == DioExceptionType.receiveTimeout;
-
     final retryCount = (options.extra['retryCount'] ?? 0) as int;
 
     if (isGet && isRetryable && retryCount < maxRetries) {
-      final delaySeconds = 1 << retryCount; // 1s, 2s, 4s
-      await Future.delayed(Duration(seconds: delaySeconds));
-
+      await Future.delayed(Duration(seconds: 1 << retryCount));
       options.extra['retryCount'] = retryCount + 1;
       try {
         final response = await ApiService.instance._dio.fetch(options);
         return handler.resolve(response);
       } catch (_) {
-        return handler.next(err); // give up after this attempt fails too
+        return handler.next(err);
       }
     }
-
     return handler.next(err);
   }
 }

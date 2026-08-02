@@ -16,6 +16,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/providers/vehicle_provider.dart';
 import '../../../data/providers/alerts_provider.dart';
 
+import '../../../main.dart';
+
 
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -32,6 +34,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkPendingAlertNavigation();
+    });
   }
 
   @override
@@ -45,6 +50,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     if (appState == AppLifecycleState.resumed) {
       ref.read(vehicleProvider.notifier).retry();
       ref.read(alertsProvider.notifier).load();
+      _checkPendingAlertNavigation();
+    }
+  }
+
+  void _checkPendingAlertNavigation() {
+    if (pendingAlertNavigation) {
+      pendingAlertNavigation = false;
+      setState(() => _navIndex = 4); // Alerts tab
+      ref.read(alertsProvider.notifier).load(); // force fresh fetch, no stale cache
     }
   }
 

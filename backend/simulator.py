@@ -78,7 +78,7 @@ def on_message(client, userdata, message):
         device_state["engine_on"] = payload.get("state", False)
         state_str = "ON" if device_state["engine_on"] else "OFF"
         logger.info(f"🔑 Engine relay → {state_str}")
-        # Confirm new state back to backend immediately
+        # Confirm new state back to backend immediate   ly
         client.publish(TOPIC_STATUS, json.dumps(generate_status()), qos=1)
         logger.info(f"📡 Confirmed engine={state_str} to backend")
 

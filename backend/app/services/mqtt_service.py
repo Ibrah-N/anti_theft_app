@@ -28,6 +28,25 @@ def topic_cmd_engine(device_id: str) -> str:
 def topic_cmd_fuel(device_id: str) -> str:
     return f"sg/{device_id}/cmd/fuel"
 
+def topic_cmd_lock(device_id: str) -> str:
+    return f"sg/{device_id}/cmd/lock"
+
+def topic_cmd_mirror(device_id: str, position: str) -> str:
+    # position: "fl" | "fr" | "rl" | "rr"
+    return f"sg/{device_id}/cmd/mirror/{position}"
+
+def topic_cmd_start(device_id: str) -> str:
+    return f"sg/{device_id}/cmd/start"
+
+def topic_cmd_ac(device_id: str) -> str:
+    return f"sg/{device_id}/cmd/ac"
+
+def topic_cmd_arm(device_id: str) -> str:
+    return f"sg/{device_id}/cmd/arm"
+
+def topic_ack(device_id: str) -> str:
+    return f"sg/{device_id}/ack"
+
 
 # ── MQTT Service ───────────────────────────────────────────────────────────────
 class MQTTService:
@@ -81,7 +100,8 @@ class MQTTService:
             client.subscribe("sg/+/sensors", qos=1)
             client.subscribe("sg/+/gps",     qos=1)
             client.subscribe("sg/+/status",  qos=1)
-            logger.info("Subscribed to sg/+/sensors, sg/+/gps, sg/+/status")
+            client.subscribe("sg/+/ack",     qos=1)
+            logger.info("Subscribed to sg/+/sensors, sg/+/gps, sg/+/status, sg/+/ack")
         else:
             logger.error(f"❌ MQTT connection failed: {reason_code}")
 
@@ -115,6 +135,8 @@ class MQTTService:
             self._handle_gps(device_id, data)
         elif topic.endswith("/status"):
             self._handle_status(device_id, data)
+        elif topic.endswith("/ack"):
+            self._handle_ack(device_id, data)
 
     # ── Message handlers ───────────────────────────────────────────────────────
     def _handle_sensors(self, device_id: str, data: dict):
@@ -131,6 +153,11 @@ class MQTTService:
         """Update battery, signal bars, connectivity."""
         if self._db_callback:
             self._db_callback("status", device_id, data)
+
+    def _handle_ack(self, device_id: str, data: dict):
+        """Device confirms a command was applied — {"cmd", "state", "success"}."""
+        if self._db_callback:
+            self._db_callback("ack", device_id, data)
 
     # ── Publish commands ───────────────────────────────────────────────────────
     def publish_engine_command(self, device_id: str, state: bool):
@@ -152,6 +179,57 @@ class MQTTService:
             retain=True,
         )
         logger.info(f"Published fuel command → {device_id}: {state}")
+
+    def publish_lock_command(self, device_id: str, state: bool):
+        payload = json.dumps({"state": state, "ts": self._ts()})
+        self.client.publish(
+            topic_cmd_lock(device_id),
+            payload,
+            qos=1,
+            retain=True,
+        )
+        logger.info(f"Published lock command → {device_id}: {state}")
+
+    def publish_mirror_command(self, device_id: str, position: str, state: bool):
+        # position: "fl" | "fr" | "rl" | "rr" — state True = fold
+        payload = json.dumps({"state": state, "ts": self._ts()})
+        self.client.publish(
+            topic_cmd_mirror(device_id, position),
+            payload,
+            qos=1,
+            retain=True,
+        )
+        logger.info(f"Published mirror_{position} command → {device_id}: {state}")
+
+    def publish_start_command(self, device_id: str, state: bool):
+        payload = json.dumps({"state": state, "ts": self._ts()})
+        self.client.publish(
+            topic_cmd_start(device_id),
+            payload,
+            qos=1,
+            retain=True,
+        )
+        logger.info(f"Published start command → {device_id}: {state}")
+
+    def publish_ac_command(self, device_id: str, state: bool):
+        payload = json.dumps({"state": state, "ts": self._ts()})
+        self.client.publish(
+            topic_cmd_ac(device_id),
+            payload,
+            qos=1,
+            retain=True,
+        )
+        logger.info(f"Published AC command → {device_id}: {state}")
+
+    def publish_arm_command(self, device_id: str, state: bool):
+        payload = json.dumps({"state": state, "ts": self._ts()})
+        self.client.publish(
+            topic_cmd_arm(device_id),
+            payload,
+            qos=1,
+            retain=True,
+        )
+        logger.info(f"Published arm command → {device_id}: {state}")
 
     def publish_gps_request(self, device_id: str):
         if not self._connected:

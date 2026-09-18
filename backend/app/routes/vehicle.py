@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -81,6 +83,105 @@ def control_fuel(
 
     return {
         "message": f"Fuel command sent to device",
+        "state":   payload.state,
+        "device":  vehicle.device_id,
+    }
+
+
+# ── Door lock control ─────────────────────────────────────────────────────────
+@router.post("/lock", response_model=dict)
+def control_lock(
+    payload: CommandPayload,
+    vehicle: Vehicle = Depends(get_current_vehicle),
+    db: Session = Depends(get_db),
+):
+    if not mqtt_service.is_connected:
+        raise HTTPException(status_code=503, detail="Device not connected")
+
+    # DB is NOT updated here — only once the device ACK confirms success
+    mqtt_service.publish_lock_command(vehicle.device_id, payload.state)
+
+    return {
+        "message": "Lock command sent to device",
+        "state":   payload.state,
+        "device":  vehicle.device_id,
+    }
+
+
+# ── Mirror control ─────────────────────────────────────────────────────────────
+@router.post("/mirror/{position}", response_model=dict)
+def control_mirror(
+    position: Literal["fl", "fr", "rl", "rr"],
+    payload: CommandPayload,
+    vehicle: Vehicle = Depends(get_current_vehicle),
+    db: Session = Depends(get_db),
+):
+    if not mqtt_service.is_connected:
+        raise HTTPException(status_code=503, detail="Device not connected")
+
+    # payload.state: True = fold, False = unfold
+    mqtt_service.publish_mirror_command(vehicle.device_id, position, payload.state)
+
+    return {
+        "message": f"Mirror {position} command sent to device",
+        "position": position,
+        "state":   payload.state,
+        "device":  vehicle.device_id,
+    }
+
+
+# ── Engine start (starter motor) control ───────────────────────────────────────
+@router.post("/start", response_model=dict)
+def control_start(
+    payload: CommandPayload,
+    vehicle: Vehicle = Depends(get_current_vehicle),
+    db: Session = Depends(get_db),
+):
+    if not mqtt_service.is_connected:
+        raise HTTPException(status_code=503, detail="Device not connected")
+
+    mqtt_service.publish_start_command(vehicle.device_id, payload.state)
+
+    return {
+        "message": "Start command sent to device",
+        "state":   payload.state,
+        "device":  vehicle.device_id,
+    }
+
+
+# ── AC control ──────────────────────────────────────────────────────────────────
+@router.post("/ac", response_model=dict)
+def control_ac(
+    payload: CommandPayload,
+    vehicle: Vehicle = Depends(get_current_vehicle),
+    db: Session = Depends(get_db),
+):
+    if not mqtt_service.is_connected:
+        raise HTTPException(status_code=503, detail="Device not connected")
+
+    mqtt_service.publish_ac_command(vehicle.device_id, payload.state)
+
+    return {
+        "message": "AC command sent to device",
+        "state":   payload.state,
+        "device":  vehicle.device_id,
+    }
+
+
+# ── Arm / disarm control ─────────────────────────────────────────────────────────
+@router.post("/arm", response_model=dict)
+def control_arm(
+    payload: CommandPayload,
+    vehicle: Vehicle = Depends(get_current_vehicle),
+    db: Session = Depends(get_db),
+):
+    if not mqtt_service.is_connected:
+        raise HTTPException(status_code=503, detail="Device not connected")
+
+    mqtt_service.publish_arm_command(vehicle.device_id, payload.state)
+
+    return {
+        "message": "Arm command sent to device",
         "state":   payload.state,
         "device":  vehicle.device_id,
     }

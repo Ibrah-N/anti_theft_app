@@ -27,6 +27,16 @@ class Vehicle(Base):
     zone_bonnet:  Mapped[bool]  = mapped_column(Boolean, default=True)
     zone_trunk:   Mapped[bool]  = mapped_column(Boolean, default=True)
 
+    # Vehicle controls — updated only after device ACK confirms success
+    is_armed:       Mapped[bool] = mapped_column(Boolean, default=True)
+    doors_locked:   Mapped[bool] = mapped_column(Boolean, default=True)
+    mirror_fl:      Mapped[bool] = mapped_column(Boolean, default=True)  # True = folded
+    mirror_fr:      Mapped[bool] = mapped_column(Boolean, default=True)
+    mirror_rl:      Mapped[bool] = mapped_column(Boolean, default=True)
+    mirror_rr:      Mapped[bool] = mapped_column(Boolean, default=True)
+    engine_started: Mapped[bool] = mapped_column(Boolean, default=False)  # starter motor relay
+    ac_on:          Mapped[bool] = mapped_column(Boolean, default=False)
+
     created_at:   Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc)

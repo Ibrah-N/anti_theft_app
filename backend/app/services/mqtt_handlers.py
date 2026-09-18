@@ -76,6 +76,8 @@ def handle_mqtt_message(msg_type: str, device_id: str, data: dict):
             _handle_gps(db, vehicle, data)
         elif msg_type == "status":
             _handle_status(db, vehicle, data)
+        elif msg_type == "ack":
+            _handle_ack(db, vehicle, data)
 
         db.commit()
 
@@ -207,6 +209,8 @@ def _handle_status(db, vehicle, data: dict):
         vehicle.engine_on     = bool(data["engine_on"])
     if "fuel_flowing" in data:
         vehicle.fuel_flowing  = bool(data["fuel_flowing"])
+    if "is_armed" in data:
+        vehicle.is_armed      = bool(data["is_armed"])
 
     logger.info(f"Status update saved — vehicle {vehicle.id}")
 
@@ -223,6 +227,69 @@ async def _broadcast_status(vehicle):
             "engine_on":     vehicle.engine_on,
             "fuel_flowing":  vehicle.fuel_flowing,
             "speed_kmh":     vehicle.speed_kmh,
+            "is_armed":      vehicle.is_armed,
+        }
+    })
+
+
+# ── ACK handler ───────────────────────────────────────────────────────────────
+# Maps the "cmd" field of an ACK payload to the Vehicle column it confirms.
+_ACK_CMD_TO_ATTR = {
+    "lock":       "doors_locked",
+    "mirror_fl":  "mirror_fl",
+    "mirror_fr":  "mirror_fr",
+    "mirror_rl":  "mirror_rl",
+    "mirror_rr":  "mirror_rr",
+    "start":      "engine_started",
+    "ac":         "ac_on",
+    "arm":        "is_armed",
+}
+
+
+def _handle_ack(db, vehicle, data: dict):
+    """
+    Expected payload:
+    {"cmd": "lock", "state": true, "success": true}
+
+    Only writes to the DB when success=True — a failed command leaves the
+    vehicle's state untouched, and the app is notified via WebSocket so it
+    can clear its "pending" UI state and show an error.
+    """
+    cmd     = data.get("cmd")
+    state   = bool(data.get("state", False))
+    success = bool(data.get("success", False))
+
+    attr = _ACK_CMD_TO_ATTR.get(cmd)
+    if attr is None:
+        logger.warning(f"Unknown ACK cmd '{cmd}' from vehicle {vehicle.id} — ignoring")
+        return
+
+    if success:
+        setattr(vehicle, attr, state)
+        logger.info(f"ACK applied — vehicle {vehicle.id} {attr}={state}")
+    else:
+        logger.warning(f"ACK reports failure — vehicle {vehicle.id} cmd={cmd} state={state}")
+
+    _broadcast_threadsafe(_broadcast_ack(vehicle, cmd, state, success))
+
+
+async def _broadcast_ack(vehicle, cmd: str, state: bool, success: bool):
+    await ws_manager.broadcast(vehicle.id, {
+        "type": "command_ack",
+        "payload": {
+            "cmd":     cmd,
+            "state":   state,
+            "success": success,
+            # Echo current confirmed control states so the client can
+            # reconcile in one shot instead of trusting only `state`.
+            "is_armed":       vehicle.is_armed,
+            "doors_locked":   vehicle.doors_locked,
+            "mirror_fl":      vehicle.mirror_fl,
+            "mirror_fr":      vehicle.mirror_fr,
+            "mirror_rl":      vehicle.mirror_rl,
+            "mirror_rr":      vehicle.mirror_rr,
+            "engine_started": vehicle.engine_started,
+            "ac_on":          vehicle.ac_on,
         }
     })
 

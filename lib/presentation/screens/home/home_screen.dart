@@ -75,6 +75,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     );
   }
 
+  void _toggleArm() {
+    ref.read(vehicleProvider.notifier).toggleArm(
+      !(ref.read(vehicleProvider).valueOrNull?.isArmed ?? true),
+    );
+  }
+
   // ── Body switcher ─────────────────────────────────────────────────────────
   Widget _buildBody() {
   switch (_navIndex) {
@@ -102,6 +108,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
           vehicle:        vehicle,
           onToggleEngine: _toggleEngine,
           onToggleFuel:   _toggleFuel,
+          onToggleArm:    _toggleArm,
+          armPending:     ref.watch(pendingCommandsProvider).contains('arm'),
           buildAppBar:    _buildAppBar,
           onRefresh:      () => ref.read(vehicleProvider.notifier).retry(),
         ),
@@ -224,7 +232,9 @@ class _HomeTab extends StatelessWidget {
   final VehicleModel   vehicle;
   final VoidCallback   onToggleEngine;
   final VoidCallback   onToggleFuel;
-  
+  final VoidCallback   onToggleArm;
+  final bool           armPending;
+
   final Widget Function() buildAppBar;
   final Future<void> Function() onRefresh;
 
@@ -232,6 +242,8 @@ class _HomeTab extends StatelessWidget {
     required this.vehicle,
     required this.onToggleEngine,
     required this.onToggleFuel,
+    required this.onToggleArm,
+    required this.armPending,
     required this.buildAppBar,
     required this.onRefresh,
   });
@@ -249,6 +261,12 @@ class _HomeTab extends StatelessWidget {
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 VehicleStatusCard(vehicle: vehicle),
+                const SizedBox(height: 16),
+                _ArmDisarmButton(
+                  isArmed: vehicle.isArmed,
+                  pending: armPending,
+                  onTap:   onToggleArm,
+                ),
                 const SizedBox(height: 24),
                 const Text('QUICK CONTROLS',
                     style: TextStyle(
@@ -312,6 +330,74 @@ class _HomeTab extends StatelessWidget {
           ],
         ),
       ), 
+    );
+  }
+}
+
+// ── ARM / DISARM button ────────────────────────────────────────────────────────
+class _ArmDisarmButton extends StatelessWidget {
+  final bool isArmed;
+  final bool pending;
+  final VoidCallback onTap;
+
+  const _ArmDisarmButton({
+    required this.isArmed,
+    required this.pending,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final Color fg   = isArmed ? AppColors.statusRed   : AppColors.textSecondary;
+    final Color bg   = isArmed ? AppColors.statusRedBg : AppColors.cardBg;
+    final Color dot  = isArmed ? AppColors.statusRed   : AppColors.textMuted;
+    final String label = isArmed ? 'ARMED' : 'DISARMED';
+
+    return Opacity(
+      opacity: pending ? 0.6 : 1.0,
+      child: SizedBox(
+        width: double.infinity,
+        height: 56,
+        child: Material(
+          color: bg,
+          borderRadius: BorderRadius.circular(14),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: pending ? null : onTap,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: fg.withValues(alpha: 0.4), width: 1),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (pending)
+                    SizedBox(
+                      width: 14, height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: fg),
+                    )
+                  else
+                    Container(
+                      width: 10, height: 10,
+                      decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+                    ),
+                  const SizedBox(width: 10),
+                  Text(
+                    pending ? 'UPDATING…' : label,
+                    style: TextStyle(
+                      color: fg,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

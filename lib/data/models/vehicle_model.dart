@@ -17,6 +17,14 @@ class VehicleModel {
   final double speedKmh;
   final double batteryLevel;
   final int signalBars;       // out of 4
+  final bool isArmed;
+  final bool doorsLocked;
+  final bool mirrorFl;        // true = folded
+  final bool mirrorFr;
+  final bool mirrorRl;
+  final bool mirrorRr;
+  final bool engineStarted;   // starter motor relay
+  final bool acOn;
 
   const VehicleModel({
     required this.name,
@@ -30,6 +38,14 @@ class VehicleModel {
     required this.speedKmh,
     required this.batteryLevel,
     required this.signalBars,
+    required this.isArmed,
+    required this.doorsLocked,
+    required this.mirrorFl,
+    required this.mirrorFr,
+    required this.mirrorRl,
+    required this.mirrorRr,
+    required this.engineStarted,
+    required this.acOn,
   });
 
   // Mock data — replaces with real API in Step 2
@@ -52,6 +68,14 @@ class VehicleModel {
     speedKmh: 0,
     batteryLevel: 12.6,
     signalBars: 3,
+    isArmed: true,
+    doorsLocked: true,
+    mirrorFl: true,
+    mirrorFr: true,
+    mirrorRl: true,
+    mirrorRr: true,
+    engineStarted: false,
+    acOn: false,
   );
 
 
@@ -75,6 +99,14 @@ class VehicleModel {
     speedKmh:     (json['speed_kmh']    as num).toDouble(),
     batteryLevel: (json['battery_level'] as num).toDouble(),
     signalBars:   json['signal_bars']   as int,
+    isArmed:       json['is_armed']       as bool,
+    doorsLocked:   json['doors_locked']   as bool,
+    mirrorFl:      json['mirror_fl']      as bool,
+    mirrorFr:      json['mirror_fr']      as bool,
+    mirrorRl:      json['mirror_rl']      as bool,
+    mirrorRr:      json['mirror_rr']      as bool,
+    engineStarted: json['engine_started'] as bool,
+    acOn:          json['ac_on']          as bool,
   );
 
   // ── copyWithJson — merge partial WebSocket update into existing model ──────
@@ -97,5 +129,13 @@ class VehicleModel {
     speedKmh:     (json['speed_kmh']    as num?)?.toDouble() ?? speedKmh,
     batteryLevel: (json['battery_level'] as num?)?.toDouble() ?? batteryLevel,
     signalBars:   json['signal_bars']   as int?   ?? signalBars,
+    isArmed:       json['is_armed']       as bool? ?? isArmed,
+    doorsLocked:   json['doors_locked']   as bool? ?? doorsLocked,
+    mirrorFl:      json['mirror_fl']      as bool? ?? mirrorFl,
+    mirrorFr:      json['mirror_fr']      as bool? ?? mirrorFr,
+    mirrorRl:      json['mirror_rl']      as bool? ?? mirrorRl,
+    mirrorRr:      json['mirror_rr']      as bool? ?? mirrorRr,
+    engineStarted: json['engine_started'] as bool? ?? engineStarted,
+    acOn:          json['ac_on']          as bool? ?? acOn,
   );
 }

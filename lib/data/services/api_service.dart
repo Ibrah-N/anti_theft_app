@@ -121,6 +121,32 @@ class ApiService {
     return response.data;
   }
 
+  Future<Map<String, dynamic>> controlLock(bool state) async {
+    final response = await _dio.post('/vehicle/lock', data: {'state': state});
+    return response.data;
+  }
+
+  /// [position] is one of "fl", "fr", "rl", "rr". [state] true = fold.
+  Future<Map<String, dynamic>> controlMirror(String position, bool state) async {
+    final response = await _dio.post('/vehicle/mirror/$position', data: {'state': state});
+    return response.data;
+  }
+
+  Future<Map<String, dynamic>> controlStart(bool state) async {
+    final response = await _dio.post('/vehicle/start', data: {'state': state});
+    return response.data;
+  }
+
+  Future<Map<String, dynamic>> controlAc(bool state) async {
+    final response = await _dio.post('/vehicle/ac', data: {'state': state});
+    return response.data;
+  }
+
+  Future<Map<String, dynamic>> controlArm(bool state) async {
+    final response = await _dio.post('/vehicle/arm', data: {'state': state});
+    return response.data;
+  }
+
   // ── Alerts ─────────────────────────────────────────────────────────────────
   Future<Map<String, dynamic>> getAlerts({
     String?  category,

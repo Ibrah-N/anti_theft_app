@@ -19,14 +19,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('vehicles', sa.Column('is_armed',       sa.Boolean(), nullable=False, server_default='true'))
-    op.add_column('vehicles', sa.Column('doors_locked',   sa.Boolean(), nullable=False, server_default='true'))
-    op.add_column('vehicles', sa.Column('mirror_fl',      sa.Boolean(), nullable=False, server_default='true'))
-    op.add_column('vehicles', sa.Column('mirror_fr',      sa.Boolean(), nullable=False, server_default='true'))
-    op.add_column('vehicles', sa.Column('mirror_rl',      sa.Boolean(), nullable=False, server_default='true'))
-    op.add_column('vehicles', sa.Column('mirror_rr',      sa.Boolean(), nullable=False, server_default='true'))
-    op.add_column('vehicles', sa.Column('engine_started', sa.Boolean(), nullable=False, server_default='false'))
-    op.add_column('vehicles', sa.Column('ac_on',          sa.Boolean(), nullable=False, server_default='false'))
+    op.add_column('vehicles', sa.Column('is_armed', sa.Boolean(), nullable=False, server_default=sa.true()))
+    op.add_column('vehicles', sa.Column('doors_locked', sa.Boolean(), nullable=False, server_default=sa.true()))
+    op.add_column('vehicles', sa.Column('mirror_fl', sa.Boolean(), nullable=False, server_default=sa.true()))
+    op.add_column('vehicles', sa.Column('mirror_fr', sa.Boolean(), nullable=False, server_default=sa.true()))
+    op.add_column('vehicles', sa.Column('mirror_rl', sa.Boolean(), nullable=False, server_default=sa.true()))
+    op.add_column('vehicles', sa.Column('mirror_rr', sa.Boolean(), nullable=False, server_default=sa.true()))
+    op.add_column('vehicles', sa.Column('engine_started', sa.Boolean(), nullable=False, server_default=sa.false()))
+    op.add_column('vehicles', sa.Column('ac_on', sa.Boolean(), nullable=False, server_default=sa.false()))
 
 
 def downgrade() -> None:

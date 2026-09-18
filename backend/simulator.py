@@ -33,6 +33,7 @@ DEVICE_ID = "esp-001"
 TOPIC_SENSORS = f"sg/{DEVICE_ID}/sensors"
 TOPIC_GPS     = f"sg/{DEVICE_ID}/gps"
 TOPIC_STATUS  = f"sg/{DEVICE_ID}/status"
+TOPIC_ACK     = f"sg/{DEVICE_ID}/ack"
 
 # ── GPS coordinates (Bara, KPK) ───────────────────────────────────────────────
 BASE_LAT = 33.901206
@@ -40,8 +41,16 @@ BASE_LNG = 71.387076
 
 # ── Device state — only changes when command received from backend ────────────
 device_state = {
-    "engine_on":    False,
-    "fuel_flowing": True,
+    "engine_on":      False,
+    "fuel_flowing":   True,
+    "is_armed":       True,
+    "doors_locked":   True,
+    "mirror_fl":      True,
+    "mirror_fr":      True,
+    "mirror_rl":      True,
+    "mirror_rr":      True,
+    "engine_started": False,
+    "ac_on":          False,
 }
 
 # ── MQTT client setup ─────────────────────────────────────────────────────────
@@ -63,6 +72,11 @@ def on_connect(client, userdata, flags, reason_code, properties):
         client.subscribe(f"sg/{DEVICE_ID}/cmd/engine",      qos=1)
         client.subscribe(f"sg/{DEVICE_ID}/cmd/fuel",        qos=1)
         client.subscribe(f"sg/{DEVICE_ID}/cmd/gps_request", qos=1)
+        client.subscribe(f"sg/{DEVICE_ID}/cmd/lock",        qos=1)
+        client.subscribe(f"sg/{DEVICE_ID}/cmd/mirror/+",    qos=1)
+        client.subscribe(f"sg/{DEVICE_ID}/cmd/start",       qos=1)
+        client.subscribe(f"sg/{DEVICE_ID}/cmd/ac",          qos=1)
+        client.subscribe(f"sg/{DEVICE_ID}/cmd/arm",         qos=1)
         logger.info(f"Subscribed to command topics for device {DEVICE_ID}")
     else:
         logger.error(f"❌ Connection failed: {reason_code}")
@@ -97,6 +111,53 @@ def on_message(client, userdata, message):
         client.publish(TOPIC_GPS, json.dumps(gps_payload), qos=1)
         logger.info(f"📡 GPS sent on request → {gps_payload}")
 
+    # ── Door lock command ────────────────────────────────────────────────────
+    elif topic.endswith("/cmd/lock"):
+        state = payload.get("state", True)
+        device_state["doors_locked"] = state
+        logger.info(f"🔒 Doors → {'LOCKED' if state else 'UNLOCKED'}")
+        publish_ack("lock", state)
+
+    # ── Mirror command — sg/{id}/cmd/mirror/{position} ───────────────────────
+    elif "/cmd/mirror/" in topic:
+        position = topic.rsplit("/", 1)[-1]  # "fl" | "fr" | "rl" | "rr"
+        state    = payload.get("state", True)
+        key      = f"mirror_{position}"
+        if key in device_state:
+            device_state[key] = state
+            logger.info(f"🪞 Mirror {position} → {'FOLDED' if state else 'UNFOLDED'}")
+            publish_ack(key, state)
+        else:
+            logger.warning(f"Unknown mirror position: {position}")
+
+    # ── Engine start (starter motor) command ─────────────────────────────────
+    elif topic.endswith("/cmd/start"):
+        state = payload.get("state", False)
+        device_state["engine_started"] = state
+        logger.info(f"⚡ Starter motor → {'ENGAGED' if state else 'DISENGAGED'}")
+        publish_ack("start", state)
+
+    # ── AC command ────────────────────────────────────────────────────────────
+    elif topic.endswith("/cmd/ac"):
+        state = payload.get("state", False)
+        device_state["ac_on"] = state
+        logger.info(f"❄️ AC → {'ON' if state else 'OFF'}")
+        publish_ack("ac", state)
+
+    # ── Arm / disarm command ──────────────────────────────────────────────────
+    elif topic.endswith("/cmd/arm"):
+        state = payload.get("state", True)
+        device_state["is_armed"] = state
+        logger.info(f"🛡️ Armed → {'ARMED' if state else 'DISARMED'}")
+        publish_ack("arm", state)
+
+
+def publish_ack(cmd: str, state: bool, success: bool = True):
+    """Confirm a command back to the backend — sg/{device_id}/ack."""
+    ack_payload = {"cmd": cmd, "state": state, "success": success}
+    client.publish(TOPIC_ACK, json.dumps(ack_payload), qos=1)
+    logger.info(f"📡 ACK → {ack_payload}")
+
 
 # ── Wire callbacks ────────────────────────────────────────────────────────────
 client.on_connect = on_connect
@@ -129,12 +190,13 @@ def generate_gps() -> dict:
 
 
 def generate_status() -> dict:
-    """Always reflects real device_state for engine and fuel."""
+    """Always reflects real device_state for engine, fuel, and arm state."""
     return {
         "battery_level": round(random.uniform(11.8, 12.8), 1),
         "signal_bars":   random.randint(2, 4),
         "engine_on":     device_state["engine_on"],
         "fuel_flowing":  device_state["fuel_flowing"],
+        "is_armed":      device_state["is_armed"],
     }
 
 

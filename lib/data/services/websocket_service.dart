@@ -7,7 +7,7 @@ import '../../core/constants/app_constants.dart';
 import 'auth_service.dart';
 
 // ── Message types from backend ─────────────────────────────────────────────
-enum WsMessageType { initialState, statusUpdate, sensorUpdate, alert, unknown }
+enum WsMessageType { initialState, statusUpdate, sensorUpdate, alert, commandAck, unknown }
 
 class WsMessage {
   final WsMessageType type;
@@ -21,6 +21,7 @@ class WsMessage {
       'status_update'  => WsMessageType.statusUpdate,
       'sensor_update'  => WsMessageType.sensorUpdate,
       'alert'          => WsMessageType.alert,
+      'command_ack'    => WsMessageType.commandAck,
       _                => WsMessageType.unknown,
     };
     return WsMessage(

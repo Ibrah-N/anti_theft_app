@@ -19,8 +19,22 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    pass
+    op.add_column('vehicles', sa.Column('is_armed',       sa.Boolean(), nullable=False, server_default='true'))
+    op.add_column('vehicles', sa.Column('doors_locked',   sa.Boolean(), nullable=False, server_default='true'))
+    op.add_column('vehicles', sa.Column('mirror_fl',      sa.Boolean(), nullable=False, server_default='true'))
+    op.add_column('vehicles', sa.Column('mirror_fr',      sa.Boolean(), nullable=False, server_default='true'))
+    op.add_column('vehicles', sa.Column('mirror_rl',      sa.Boolean(), nullable=False, server_default='true'))
+    op.add_column('vehicles', sa.Column('mirror_rr',      sa.Boolean(), nullable=False, server_default='true'))
+    op.add_column('vehicles', sa.Column('engine_started', sa.Boolean(), nullable=False, server_default='false'))
+    op.add_column('vehicles', sa.Column('ac_on',          sa.Boolean(), nullable=False, server_default='false'))
 
 
 def downgrade() -> None:
-    pass
+    op.drop_column('vehicles', 'ac_on')
+    op.drop_column('vehicles', 'engine_started')
+    op.drop_column('vehicles', 'mirror_rr')
+    op.drop_column('vehicles', 'mirror_rl')
+    op.drop_column('vehicles', 'mirror_fr')
+    op.drop_column('vehicles', 'mirror_fl')
+    op.drop_column('vehicles', 'doors_locked')
+    op.drop_column('vehicles', 'is_armed')

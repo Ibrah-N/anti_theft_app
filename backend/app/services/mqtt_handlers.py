@@ -70,6 +70,27 @@ def handle_mqtt_message(msg_type: str, device_id: str, data: dict):
             logger.warning(f"Unknown device_id: {device_id} — ignoring message")
             return
 
+        # ── Disarmed = sleep mode ────────────────────────────────────────────
+        # When disarmed, the device is expected to sleep — no periodic sensor
+        # or GPS publishing — to save power instead of running 24/7. This is
+        # a backend-side safety net: if a stray sensors/gps message arrives
+        # anyway while disarmed, we drop it here entirely (no DB write, no
+        # WebSocket broadcast, no push notification).
+        #
+        # "status" is NOT gated here, because it's how the device tells us
+        # about an arm-state change (e.g. a hardware key-fob toggle) — that
+        # needs to reach the app even while disarmed. _handle_status applies
+        # its own, narrower suppression: it still processes the message, but
+        # only broadcasts to the app if the vehicle is armed OR the arm state
+        # just changed. "ack" is never gated, since a pending command (most
+        # importantly arm/disarm itself) must always be able to confirm.
+        if msg_type in ("sensors", "gps") and not vehicle.is_armed:
+            logger.info(
+                f"Vehicle {vehicle.id} is disarmed — dropping '{msg_type}' "
+                f"message (sleep mode, no data transfer)"
+            )
+            return
+
         if msg_type == "sensors":
             _handle_sensors(db, vehicle, data)
         elif msg_type == "gps":
@@ -201,6 +222,8 @@ def _handle_status(db, vehicle, data: dict):
         "engine_on": false, "fuel_flowing": true
     }
     """
+    was_armed = vehicle.is_armed
+
     if "battery_level" in data:
         vehicle.battery_level = float(data["battery_level"])
     if "signal_bars" in data:
@@ -215,7 +238,17 @@ def _handle_status(db, vehicle, data: dict):
     logger.info(f"Status update saved — vehicle {vehicle.id}")
 
     # ── Push to WebSocket clients ─────────────────────────────────────────────
-    _broadcast_threadsafe(_broadcast_status(vehicle))
+    # While disarmed, the device is asleep and shouldn't be feeding the app
+    # anything — except the arm-state transition itself, so the app's
+    # ARM/DISARM button stays in sync even though everything else goes quiet.
+    armed_state_changed = was_armed != vehicle.is_armed
+    if vehicle.is_armed or armed_state_changed:
+        _broadcast_threadsafe(_broadcast_status(vehicle))
+    else:
+        logger.info(
+            f"Vehicle {vehicle.id} disarmed — suppressing status broadcast "
+            f"(sleep mode, no data transfer)"
+        )
 
 
 async def _broadcast_status(vehicle):

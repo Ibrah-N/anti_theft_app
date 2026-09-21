@@ -12,13 +12,15 @@ import paho.mqtt.client as mqtt
 from dotenv import load_dotenv
 import os
 
-load_dotenv()
+result = load_dotenv()
+print("DEBUG load_dotenv():", result, "cwd:", os.getcwd(), "file:", __file__)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s — %(message)s"
-)
+logging.basicConfig(level=logging.INFO,
+    format="%(asctime)s %(levelname)s — %(message)s")
 logger = logging.getLogger(__name__)
+
+MQTT_HOST     = os.getenv("MQTT_HOST")
+print("DEBUG MQTT_HOST:", repr(MQTT_HOST))
 
 # ── Config ────────────────────────────────────────────────────────────────────
 MQTT_HOST     = os.getenv("MQTT_HOST")
@@ -215,8 +217,22 @@ def run():
 
     while True:
         try:
+            if not device_state["is_armed"]:
+                # ── Sleep mode ────────────────────────────────────────────────
+                # Disarmed = no periodic telemetry, matching real firmware
+                # behavior (saves power/heat instead of running 24/7). The
+                # device still listens for commands (arm, lock, etc.) via the
+                # MQTT loop running in its own thread — only this publish loop
+                # goes quiet.
+                if step % 6 == 0:
+                    logger.info("😴 Disarmed — sleeping (no telemetry published)")
+                step += 1
+                time.sleep(5)
+                continue
+
             # ── Status every 5 seconds ────────────────────────────────────────
             status_payload = generate_status()
+
             client.publish(TOPIC_STATUS, json.dumps(status_payload), qos=1)
             logger.info(
                 f"📡 STATUS → battery={status_payload['battery_level']}V "

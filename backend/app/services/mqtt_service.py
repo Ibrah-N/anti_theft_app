@@ -166,7 +166,7 @@ class MQTTService:
             topic_cmd_engine(device_id),
             payload,
             qos=1,          # QoS 1 = at least once delivery
-            retain=True,    # device gets command even if briefly offline
+            retain=False,    # device gets command even if briefly offline
         )
         logger.info(f"Published engine command → {device_id}: {state}")
 
@@ -176,7 +176,7 @@ class MQTTService:
             topic_cmd_fuel(device_id),
             payload,
             qos=1,
-            retain=True,
+            retain=False,
         )
         logger.info(f"Published fuel command → {device_id}: {state}")
 
@@ -186,7 +186,7 @@ class MQTTService:
             topic_cmd_lock(device_id),
             payload,
             qos=1,
-            retain=True,
+            retain=False,
         )
         logger.info(f"Published lock command → {device_id}: {state}")
 
@@ -197,7 +197,7 @@ class MQTTService:
             topic_cmd_mirror(device_id, position),
             payload,
             qos=1,
-            retain=True,
+            retain=False,
         )
         logger.info(f"Published mirror_{position} command → {device_id}: {state}")
 
@@ -207,7 +207,7 @@ class MQTTService:
             topic_cmd_start(device_id),
             payload,
             qos=1,
-            retain=True,
+            retain=False,
         )
         logger.info(f"Published start command → {device_id}: {state}")
 
@@ -217,7 +217,7 @@ class MQTTService:
             topic_cmd_ac(device_id),
             payload,
             qos=1,
-            retain=True,
+            retain=False,
         )
         logger.info(f"Published AC command → {device_id}: {state}")
 
@@ -227,7 +227,7 @@ class MQTTService:
             topic_cmd_arm(device_id),
             payload,
             qos=1,
-            retain=True,
+            retain=False,
         )
         logger.info(f"Published arm command → {device_id}: {state}")
 

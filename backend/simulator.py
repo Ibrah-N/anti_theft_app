@@ -7,6 +7,7 @@ import json
 import time
 import random
 import logging
+from datetime import datetime, timezone
 
 import paho.mqtt.client as mqtt
 from dotenv import load_dotenv
@@ -30,6 +31,24 @@ MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
 
 # ── Device ID — must match vehicle.device_id in database ─────────────────────
 DEVICE_ID = "esp-001"
+
+# ── Command freshness ─────────────────────────────────────────────────────────
+# Matches the app's own 10-second "pending" timeout. A command older than
+# this was sent while the device was offline (or delayed some other way) —
+# applying it now would be acting on a stale tap the user has already given
+# up on. Refuse it instead: don't change state, don't send an ACK.
+COMMAND_MAX_AGE_SECONDS = 10
+
+def _is_command_expired(payload: dict) -> bool:
+    ts_str = payload.get("ts")
+    if not ts_str:
+        return False  # no timestamp on the payload — nothing to judge, allow it
+    try:
+        sent_at = datetime.fromisoformat(ts_str)
+    except ValueError:
+        return False
+    age = (datetime.now(timezone.utc) - sent_at).total_seconds()
+    return age > COMMAND_MAX_AGE_SECONDS
 
 # ── Topics ────────────────────────────────────────────────────────────────────
 TOPIC_SENSORS = f"sg/{DEVICE_ID}/sensors"
@@ -88,6 +107,13 @@ def on_message(client, userdata, message):
     topic   = message.topic
     payload = json.loads(message.payload.decode())
     logger.info(f"📥 Command received → {topic}: {payload}")
+
+    if _is_command_expired(payload):
+        logger.warning(
+            f"⏱️ Command on {topic} is stale (>{COMMAND_MAX_AGE_SECONDS}s old) "
+            f"— dropping, no ACK sent"
+        )
+        return
 
     # ── Engine command ────────────────────────────────────────────────────────
     if topic.endswith("/cmd/engine"):

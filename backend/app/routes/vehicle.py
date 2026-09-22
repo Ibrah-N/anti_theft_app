@@ -56,6 +56,12 @@ def control_engine(
     vehicle: Vehicle = Depends(get_current_vehicle),
     db: Session = Depends(get_db),
 ):
+    if not vehicle.is_armed:
+        raise HTTPException(
+            status_code=409,
+            detail="Vehicle is disarmed — arm it to use this control",
+        )
+        
     if not mqtt_service.is_connected:
         raise HTTPException(status_code=503, detail="Device not connected")
 
@@ -76,6 +82,12 @@ def control_fuel(
     vehicle: Vehicle = Depends(get_current_vehicle),
     db: Session = Depends(get_db),
 ):
+    if not vehicle.is_armed:
+        raise HTTPException(
+            status_code=409,
+            detail="Vehicle is disarmed — arm it to use this control",
+        )
+
     if not mqtt_service.is_connected:
         raise HTTPException(status_code=503, detail="Device not connected")
 
@@ -137,6 +149,12 @@ def control_start(
     vehicle: Vehicle = Depends(get_current_vehicle),
     db: Session = Depends(get_db),
 ):
+    if not vehicle.is_armed:
+        raise HTTPException(
+            status_code=409,
+            detail="Vehicle is disarmed — arm it to use this control",
+        )
+
     if not mqtt_service.is_connected:
         raise HTTPException(status_code=503, detail="Device not connected")
 
@@ -156,6 +174,13 @@ def control_ac(
     vehicle: Vehicle = Depends(get_current_vehicle),
     db: Session = Depends(get_db),
 ):
+
+    if not vehicle.is_armed:
+        raise HTTPException(
+            status_code=409,
+            detail="Vehicle is disarmed — arm it to use this control",
+        )
+
     if not mqtt_service.is_connected:
         raise HTTPException(status_code=503, detail="Device not connected")
 

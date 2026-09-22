@@ -24,6 +24,7 @@ class WsMessage {
       'command_ack'    => WsMessageType.commandAck,
       _                => WsMessageType.unknown,
     };
+
     return WsMessage(
       type:    type,
       payload: Map<String, dynamic>.from(json['payload'] ?? {}),

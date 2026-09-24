@@ -1,5 +1,6 @@
 # app/routes/ws.py
 
+import json
 import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy.orm import Session
@@ -9,6 +10,8 @@ from app.core.security import decode_token
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.services.websocket_service import ws_manager
+from app.services import webrtc_signaling
+from app.services.mqtt_service import mqtt_service
 
 logger = logging.getLogger(__name__)
 
@@ -76,11 +79,49 @@ async def websocket_endpoint(
     })
 
     # ── Keep alive — wait for disconnect ──────────────────────────────────────
+    # ── Two-way from here on ─────────────────────────────────────────────────
+    # The app is the WebRTC "answerer" for camera streaming — the device
+    # sends its offer via MQTT (relayed in via mqtt_handlers), the app
+    # answers here over this same socket, and we relay that answer (plus any
+    # ICE candidates) back out to the device over MQTT.
     try:
         while True:
-            # We don't expect messages from client
-            # but we must await to keep connection alive
-            await websocket.receive_text()
+            raw = await websocket.receive_text()
+
+            try:
+                msg = json.loads(raw)
+            except json.JSONDecodeError:
+                logger.warning(f"Ignoring non-JSON WS message from vehicle {vehicle_id}")
+                continue
+
+            msg_type = msg.get("type")
+            payload  = msg.get("payload", {})
+            call_id  = payload.get("call_id")
+
+            # Every signaling message must reference the currently active
+            # session — guards against a stale/superseded call's messages
+            # leaking through after a new one has already started.
+            if msg_type in ("webrtc_answer", "webrtc_ice"):
+                if not call_id or not webrtc_signaling.is_valid_call(vehicle_id, call_id):
+                    logger.warning(
+                        f"Vehicle {vehicle_id} — ignoring '{msg_type}' with "
+                        f"invalid/stale call_id={call_id}"
+                    )
+                    continue
+
+            if msg_type == "webrtc_answer":
+                mqtt_service.publish_webrtc_answer(
+                    vehicle.device_id, payload.get("sdp"), call_id
+                )
+            elif msg_type == "webrtc_ice":
+                candidate = {
+                    "candidate":     payload.get("candidate"),
+                    "sdpMid":        payload.get("sdpMid"),
+                    "sdpMLineIndex": payload.get("sdpMLineIndex"),
+                }
+                mqtt_service.publish_webrtc_ice(vehicle.device_id, candidate, call_id)
+            # else: unknown/irrelevant message type — ignore silently
+
     except WebSocketDisconnect:
         ws_manager.disconnect(vehicle_id, websocket)
         logger.info(f"WebSocket disconnected — vehicle {vehicle_id}")

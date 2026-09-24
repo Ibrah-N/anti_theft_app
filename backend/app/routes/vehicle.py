@@ -11,6 +11,8 @@ from app.core.dependencies import get_current_user, get_current_vehicle
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.services.mqtt_service import mqtt_service
+from app.services import webrtc_signaling
+from app.services import turn_credentials
 
 from app.schemas.vehicle import VehicleResponse, VehicleRegister, CommandPayload
 
@@ -208,5 +210,58 @@ def control_arm(
     return {
         "message": "Arm command sent to device",
         "state":   payload.state,
+        "device":  vehicle.device_id,
+    }
+
+
+# ── Camera / WebRTC signaling ─────────────────────────────────────────────────
+# NOTE: not gated on is_armed, unlike engine/fuel/ac/start — checking your own
+# camera while parked and disarmed is a reasonable thing to want. Flip this by
+# adding the same 4-line `if not vehicle.is_armed: raise HTTPException(...)`
+# block used in the other control routes, if you'd rather it require armed.
+@router.post("/camera/start", response_model=dict)
+def start_camera(
+    vehicle: Vehicle = Depends(get_current_vehicle),
+    db: Session = Depends(get_db),
+):
+    if not mqtt_service.is_connected:
+        raise HTTPException(status_code=503, detail="Device not connected")
+
+    call_id = webrtc_signaling.start_session(vehicle.id)
+    mqtt_service.publish_camera_start_command(vehicle.device_id, call_id)
+
+    return {
+        "message":     "Camera start command sent to device",
+        "call_id":     call_id,
+        "device":      vehicle.device_id,
+        "ice_servers": turn_credentials.get_ice_servers(),
+    }
+
+
+@router.get("/camera/ice-servers", response_model=dict)
+def get_ice_servers(
+    vehicle: Vehicle = Depends(get_current_vehicle),
+):
+    """
+    Standalone endpoint for refreshing ICE servers independently of starting
+    a new session — e.g. if a long call needs fresh (non-expired) TURN
+    credentials mid-stream without tearing down the whole call_id.
+    """
+    return {"ice_servers": turn_credentials.get_ice_servers()}
+
+
+@router.post("/camera/stop", response_model=dict)
+def stop_camera(
+    vehicle: Vehicle = Depends(get_current_vehicle),
+    db: Session = Depends(get_db),
+):
+    call_id = webrtc_signaling.get_call_id(vehicle.id)
+    if call_id and mqtt_service.is_connected:
+        mqtt_service.publish_camera_stop_command(vehicle.device_id, call_id)
+
+    webrtc_signaling.end_session(vehicle.id)
+
+    return {
+        "message": "Camera stop command sent to device",
         "device":  vehicle.device_id,
     }

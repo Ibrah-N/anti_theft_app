@@ -10,6 +10,7 @@ from app.models.gps_reading import GPSReading
 
 import asyncio
 from app.services.websocket_service import ws_manager
+from app.services import webrtc_signaling
 
 from firebase_admin import messaging
 from app.models.device_token import DeviceToken
@@ -99,6 +100,10 @@ def handle_mqtt_message(msg_type: str, device_id: str, data: dict):
             _handle_status(db, vehicle, data)
         elif msg_type == "ack":
             _handle_ack(db, vehicle, data)
+        elif msg_type == "webrtc_offer":
+            _handle_webrtc_offer(db, vehicle, data)
+        elif msg_type == "webrtc_ice":
+            _handle_webrtc_ice(db, vehicle, data)
 
         db.commit()
 
@@ -324,6 +329,56 @@ async def _broadcast_ack(vehicle, cmd: str, state: bool, success: bool):
             "engine_started": vehicle.engine_started,
             "ac_on":          vehicle.ac_on,
         }
+    })
+
+
+# ── WebRTC signaling relay (device → app) ──────────────────────────────────────
+# The camera device is the WebRTC "offerer" — it owns the actual video
+# hardware, so it's the one that describes what it can send. These two
+# handlers just relay the device's offer/ICE candidates straight through to
+# whichever app client is watching this vehicle over the existing WebSocket
+# connection. Nothing is persisted to the DB — this is purely in-flight
+# signaling, not vehicle state.
+def _handle_webrtc_offer(db, vehicle, data: dict):
+    """Expected payload: {"sdp": "...", "call_id": "..."}"""
+    call_id = data.get("call_id")
+    if not webrtc_signaling.is_valid_call(vehicle.id, call_id):
+        logger.warning(
+            f"Vehicle {vehicle.id} — dropping WebRTC offer for stale/unknown "
+            f"call_id={call_id}"
+        )
+        return
+
+    logger.info(f"WebRTC offer received — vehicle {vehicle.id} call_id={call_id}")
+    _broadcast_threadsafe(_broadcast_webrtc_signal(
+        vehicle, "webrtc_offer", {"sdp": data.get("sdp"), "call_id": call_id}
+    ))
+
+
+def _handle_webrtc_ice(db, vehicle, data: dict):
+    """Expected payload: {"candidate", "sdpMid", "sdpMLineIndex", "call_id"}"""
+    call_id = data.get("call_id")
+    if not webrtc_signaling.is_valid_call(vehicle.id, call_id):
+        logger.warning(
+            f"Vehicle {vehicle.id} — dropping WebRTC ICE candidate for "
+            f"stale/unknown call_id={call_id}"
+        )
+        return
+
+    _broadcast_threadsafe(_broadcast_webrtc_signal(
+        vehicle, "webrtc_ice", {
+            "candidate":     data.get("candidate"),
+            "sdpMid":        data.get("sdpMid"),
+            "sdpMLineIndex": data.get("sdpMLineIndex"),
+            "call_id":       call_id,
+        }
+    ))
+
+
+async def _broadcast_webrtc_signal(vehicle, msg_type: str, payload: dict):
+    await ws_manager.broadcast(vehicle.id, {
+        "type":    msg_type,
+        "payload": payload,
     })
 
 

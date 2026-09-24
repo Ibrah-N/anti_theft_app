@@ -7,11 +7,29 @@ import json
 import time
 import random
 import logging
+import asyncio
+import threading
+import hmac
+import hashlib
+import base64
 from datetime import datetime, timezone
+
+import numpy as np
+from PIL import Image, ImageDraw
+from av import VideoFrame
+from aiortc import (
+    RTCPeerConnection,
+    RTCSessionDescription,
+    RTCConfiguration,
+    RTCIceServer,
+    VideoStreamTrack,
+)
+from aiortc.sdp import candidate_from_sdp
 
 import paho.mqtt.client as mqtt
 from dotenv import load_dotenv
 import os
+
 
 result = load_dotenv()
 print("DEBUG load_dotenv():", result, "cwd:", os.getcwd(), "file:", __file__)
@@ -28,6 +46,13 @@ MQTT_HOST     = os.getenv("MQTT_HOST")
 MQTT_PORT     = int(os.getenv("MQTT_PORT", 8883))
 MQTT_USERNAME = os.getenv("MQTT_USERNAME")
 MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
+
+# ── TURN (coturn) — same shared secret as backend/app/core/config.py ─────────
+# Used to mint our own short-lived TURN credentials, exactly like the app
+# does via /vehicle/camera/ice-servers, so this simulator exercises the real
+# relay path instead of assuming a direct connection is always possible.
+TURN_SECRET = os.getenv("TURN_SECRET")
+TURN_HOST   = os.getenv("TURN_HOST", "vigilx.duckdns.org")
 
 # ── Device ID — must match vehicle.device_id in database ─────────────────────
 DEVICE_ID = "esp-001"
@@ -55,6 +80,8 @@ TOPIC_SENSORS = f"sg/{DEVICE_ID}/sensors"
 TOPIC_GPS     = f"sg/{DEVICE_ID}/gps"
 TOPIC_STATUS  = f"sg/{DEVICE_ID}/status"
 TOPIC_ACK     = f"sg/{DEVICE_ID}/ack"
+TOPIC_WEBRTC_OFFER = f"sg/{DEVICE_ID}/webrtc/offer"
+TOPIC_WEBRTC_ICE   = f"sg/{DEVICE_ID}/webrtc/ice"
 
 # ── GPS coordinates (Bara, KPK) ───────────────────────────────────────────────
 BASE_LAT = 33.901206
@@ -98,6 +125,10 @@ def on_connect(client, userdata, flags, reason_code, properties):
         client.subscribe(f"sg/{DEVICE_ID}/cmd/start",       qos=1)
         client.subscribe(f"sg/{DEVICE_ID}/cmd/ac",          qos=1)
         client.subscribe(f"sg/{DEVICE_ID}/cmd/arm",         qos=1)
+        client.subscribe(f"sg/{DEVICE_ID}/cmd/camera/start", qos=1)
+        client.subscribe(f"sg/{DEVICE_ID}/cmd/camera/stop",  qos=1)
+        client.subscribe(f"sg/{DEVICE_ID}/cmd/webrtc/answer", qos=1)
+        client.subscribe(f"sg/{DEVICE_ID}/cmd/webrtc/ice",    qos=1)
         logger.info(f"Subscribed to command topics for device {DEVICE_ID}")
     else:
         logger.error(f"❌ Connection failed: {reason_code}")
@@ -179,12 +210,189 @@ def on_message(client, userdata, message):
         logger.info(f"🛡️ Armed → {'ARMED' if state else 'DISARMED'}")
         publish_ack("arm", state)
 
+    # ── Camera / WebRTC commands ─────────────────────────────────────────────
+    # These hand off to the dedicated asyncio event loop (camera_loop, set up
+    # below) since aiortc needs a real event loop to run — paho's on_message
+    # callback itself is synchronous and can't await anything directly.
+    elif topic.endswith("/cmd/camera/start"):
+        call_id = payload.get("call_id")
+        logger.info(f"📷 Camera start requested — call_id={call_id}")
+        asyncio.run_coroutine_threadsafe(_camera_start(call_id), camera_loop)
+
+    elif topic.endswith("/cmd/camera/stop"):
+        logger.info("📷 Camera stop requested")
+        asyncio.run_coroutine_threadsafe(_camera_stop(), camera_loop)
+
+    elif topic.endswith("/cmd/webrtc/answer"):
+        asyncio.run_coroutine_threadsafe(
+            _camera_answer(payload.get("sdp"), payload.get("call_id")), camera_loop
+        )
+
+    elif topic.endswith("/cmd/webrtc/ice"):
+        asyncio.run_coroutine_threadsafe(
+            _camera_ice(payload, payload.get("call_id")), camera_loop
+        )
+
 
 def publish_ack(cmd: str, state: bool, success: bool = True):
     """Confirm a command back to the backend — sg/{device_id}/ack."""
     ack_payload = {"cmd": cmd, "state": state, "success": success}
     client.publish(TOPIC_ACK, json.dumps(ack_payload), qos=1)
     logger.info(f"📡 ACK → {ack_payload}")
+
+
+# ── Camera / WebRTC subsystem ────────────────────────────────────────────────
+# aiortc needs a real asyncio event loop, but the rest of this simulator is
+# synchronous (paho's callback style). Rather than rewrite the whole file
+# around asyncio, we run one dedicated event loop in its own background
+# thread — exactly the same pattern the backend itself uses (main_event_loop
+# + run_coroutine_threadsafe in mqtt_handlers.py) — and hand work to it from
+# the synchronous MQTT callbacks above.
+camera_loop = asyncio.new_event_loop()
+
+def _start_camera_loop():
+    asyncio.set_event_loop(camera_loop)
+    camera_loop.run_forever()
+
+threading.Thread(target=_start_camera_loop, daemon=True, name="camera-loop").start()
+
+CAMERA_SESSION_MAX_SECONDS = 300  # 5 minutes — matches the app's own session cap
+
+_pc: RTCPeerConnection | None = None
+_current_call_id: str | None = None
+_stop_handle = None  # camera_loop.call_later() handle, for the auto-timeout
+
+
+class TestPatternTrack(VideoStreamTrack):
+    """
+    A synthetic video feed standing in for the real ESP32-P4 camera — a
+    moving block plus a frame counter, so you can visually confirm in the
+    app that frames are actually updating over time, not just that a
+    connection was established. Swap this out for a real camera source once
+    the hardware firmware exists; everything else in this file (signaling,
+    TURN, session handling) stays the same.
+    """
+    kind = "video"
+
+    def __init__(self):
+        super().__init__()
+        self._n = 0
+
+    async def recv(self):
+        pts, time_base = await self.next_timestamp()
+
+        img = Image.new("RGB", (320, 240), (20, 20, 30))
+        draw = ImageDraw.Draw(img)
+        x = int((self._n * 4) % 300)
+        draw.rectangle([x, 100, x + 20, 140], fill=(0, 150, 255))
+        draw.text((10, 10), f"VigilX simulator — frame {self._n}", fill=(255, 255, 255))
+        draw.text((10, 220), DEVICE_ID, fill=(150, 150, 150))
+        self._n += 1
+
+        frame = VideoFrame.from_ndarray(np.array(img), format="rgb24")
+        frame.pts = pts
+        frame.time_base = time_base
+        return frame
+
+
+def _turn_ice_config() -> RTCConfiguration:
+    """Mint our own short-lived TURN credentials — same HMAC scheme as the
+    backend's turn_credentials.py, so this simulator exercises the real
+    relay path exactly like the app will."""
+    if not TURN_SECRET:
+        logger.warning("TURN_SECRET not set — falling back to STUN only")
+        return RTCConfiguration(iceServers=[
+            RTCIceServer(urls="stun:stun.l.google.com:19302"),
+        ])
+
+    username = str(int(time.time()) + 3600)
+    credential = base64.b64encode(
+        hmac.new(TURN_SECRET.encode(), username.encode(), hashlib.sha1).digest()
+    ).decode()
+
+    return RTCConfiguration(iceServers=[
+        RTCIceServer(urls="stun:stun.l.google.com:19302"),
+        RTCIceServer(
+            urls=[f"turn:{TURN_HOST}:3478", f"turn:{TURN_HOST}:3478?transport=tcp"],
+            username=username,
+            credential=credential,
+        ),
+    ])
+
+
+async def _camera_start(call_id: str):
+    global _pc, _current_call_id, _stop_handle
+
+    if _pc is not None:
+        logger.info("Replacing existing camera session with new one")
+        await _camera_stop()
+
+    _current_call_id = call_id
+    _pc = RTCPeerConnection(configuration=_turn_ice_config())
+    _pc.addTrack(TestPatternTrack())
+
+    @_pc.on("connectionstatechange")
+    async def on_state_change():
+        logger.info(f"📷 WebRTC connection state → {_pc.connectionState}")
+        if _pc.connectionState in ("failed", "closed"):
+            await _camera_stop()
+
+    offer = await _pc.createOffer()
+    await _pc.setLocalDescription(offer)
+
+    # Non-trickle on our side: wait for ICE gathering to finish so the offer
+    # already contains every candidate we know about in one shot. Simpler
+    # and more reliable for a test simulator than implementing trickle ICE
+    # both ways — the app may still trickle its own candidates for the
+    # answer side, which _camera_ice() below handles either way.
+    while _pc.iceGatheringState != "complete":
+        await asyncio.sleep(0.1)
+
+    client.publish(TOPIC_WEBRTC_OFFER, json.dumps({
+        "sdp":     _pc.localDescription.sdp,
+        "call_id": call_id,
+    }), qos=1)
+    logger.info(f"📷 WebRTC offer published — call_id={call_id}")
+
+    _stop_handle = camera_loop.call_later(
+        CAMERA_SESSION_MAX_SECONDS,
+        lambda: asyncio.ensure_future(_camera_stop(), loop=camera_loop),
+    )
+
+
+async def _camera_answer(sdp: str, call_id: str):
+    if _pc is None or call_id != _current_call_id:
+        logger.warning(f"Ignoring WebRTC answer for unknown/stale call_id={call_id}")
+        return
+    await _pc.setRemoteDescription(RTCSessionDescription(sdp=sdp, type="answer"))
+    logger.info("📷 Remote description set — connecting...")
+
+
+async def _camera_ice(data: dict, call_id: str):
+    if _pc is None or call_id != _current_call_id:
+        return
+    candidate_str = data.get("candidate")
+    if not candidate_str:
+        return
+    try:
+        candidate = candidate_from_sdp(candidate_str.split(":", 1)[-1] if candidate_str.startswith("candidate:") else candidate_str)
+        candidate.sdpMid        = data.get("sdpMid")
+        candidate.sdpMLineIndex = data.get("sdpMLineIndex")
+        await _pc.addIceCandidate(candidate)
+    except Exception as e:
+        logger.warning(f"Failed to add remote ICE candidate: {e}")
+
+
+async def _camera_stop():
+    global _pc, _current_call_id, _stop_handle
+    if _stop_handle:
+        _stop_handle.cancel()
+        _stop_handle = None
+    if _pc:
+        await _pc.close()
+        _pc = None
+    logger.info(f"📷 WebRTC session ended — call_id={_current_call_id}")
+    _current_call_id = None
 
 
 # ── Wire callbacks ────────────────────────────────────────────────────────────

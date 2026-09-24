@@ -30,7 +30,6 @@ class Settings(BaseSettings):
     TURN_SECRET: str = "c50f6f08b4228ef7a8f4474d855c1b292586eedbd4cfa25b8818471f72cf5ae3"
     TURN_HOST:   str = "vigilx.duckdns.org"
 
-
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=True,

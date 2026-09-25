@@ -47,24 +47,6 @@ def topic_cmd_arm(device_id: str) -> str:
 def topic_ack(device_id: str) -> str:
     return f"sg/{device_id}/ack"
 
-def topic_cmd_camera_start(device_id: str) -> str:
-    return f"sg/{device_id}/cmd/camera/start"
-
-def topic_cmd_camera_stop(device_id: str) -> str:
-    return f"sg/{device_id}/cmd/camera/stop"
-
-def topic_cmd_webrtc_answer(device_id: str) -> str:
-    return f"sg/{device_id}/cmd/webrtc/answer"
-
-def topic_cmd_webrtc_ice(device_id: str) -> str:
-    return f"sg/{device_id}/cmd/webrtc/ice"
-
-def topic_webrtc_offer(device_id: str) -> str:
-    return f"sg/{device_id}/webrtc/offer"
-
-def topic_webrtc_ice(device_id: str) -> str:
-    return f"sg/{device_id}/webrtc/ice"
-
 
 # ── MQTT Service ───────────────────────────────────────────────────────────────
 class MQTTService:
@@ -119,12 +101,7 @@ class MQTTService:
             client.subscribe("sg/+/gps",     qos=1)
             client.subscribe("sg/+/status",  qos=1)
             client.subscribe("sg/+/ack",     qos=1)
-            client.subscribe("sg/+/webrtc/offer", qos=1)
-            client.subscribe("sg/+/webrtc/ice",   qos=1)
-            logger.info(
-                "Subscribed to sg/+/sensors, sg/+/gps, sg/+/status, sg/+/ack, "
-                "sg/+/webrtc/offer, sg/+/webrtc/ice"
-            )
+            logger.info("Subscribed to sg/+/sensors, sg/+/gps, sg/+/status, sg/+/ack")
         else:
             logger.error(f"❌ MQTT connection failed: {reason_code}")
 
@@ -160,10 +137,6 @@ class MQTTService:
             self._handle_status(device_id, data)
         elif topic.endswith("/ack"):
             self._handle_ack(device_id, data)
-        elif topic.endswith("/webrtc/offer"):
-            self._handle_webrtc_offer(device_id, data)
-        elif topic.endswith("/webrtc/ice"):
-            self._handle_webrtc_ice(device_id, data)
 
     # ── Message handlers ───────────────────────────────────────────────────────
     def _handle_sensors(self, device_id: str, data: dict):
@@ -186,16 +159,6 @@ class MQTTService:
         if self._db_callback:
             self._db_callback("ack", device_id, data)
 
-    def _handle_webrtc_offer(self, device_id: str, data: dict):
-        """Device's SDP offer, starting a WebRTC handshake — {"sdp", "call_id"}."""
-        if self._db_callback:
-            self._db_callback("webrtc_offer", device_id, data)
-
-    def _handle_webrtc_ice(self, device_id: str, data: dict):
-        """Device's ICE candidate — {"candidate", "sdpMid", "sdpMLineIndex", "call_id"}."""
-        if self._db_callback:
-            self._db_callback("webrtc_ice", device_id, data)
-
     # ── Publish commands ───────────────────────────────────────────────────────
     def publish_engine_command(self, device_id: str, state: bool):
         payload = json.dumps({"state": state, "ts": self._ts()})
@@ -203,7 +166,7 @@ class MQTTService:
             topic_cmd_engine(device_id),
             payload,
             qos=1,          # QoS 1 = at least once delivery
-            retain=False,    # one-shot command — never replay a stale tap
+            retain=False,    # device gets command even if briefly offline
         )
         logger.info(f"Published engine command → {device_id}: {state}")
 
@@ -268,46 +231,6 @@ class MQTTService:
         )
         logger.info(f"Published arm command → {device_id}: {state}")
 
-    def publish_camera_start_command(self, device_id: str, call_id: str):
-        payload = json.dumps({"call_id": call_id, "ts": self._ts()})
-        self.client.publish(
-            topic_cmd_camera_start(device_id),
-            payload,
-            qos=1,
-            retain=False,
-        )
-        logger.info(f"Published camera start command → {device_id} call_id={call_id}")
-
-    def publish_camera_stop_command(self, device_id: str, call_id: str):
-        payload = json.dumps({"call_id": call_id, "ts": self._ts()})
-        self.client.publish(
-            topic_cmd_camera_stop(device_id),
-            payload,
-            qos=1,
-            retain=False,
-        )
-        logger.info(f"Published camera stop command → {device_id} call_id={call_id}")
-
-    def publish_webrtc_answer(self, device_id: str, sdp: str, call_id: str):
-        payload = json.dumps({"sdp": sdp, "call_id": call_id, "ts": self._ts()})
-        self.client.publish(
-            topic_cmd_webrtc_answer(device_id),
-            payload,
-            qos=1,
-            retain=False,
-        )
-        logger.info(f"Published WebRTC answer → {device_id} call_id={call_id}")
-
-    def publish_webrtc_ice(self, device_id: str, candidate: dict, call_id: str):
-        payload = json.dumps({**candidate, "call_id": call_id, "ts": self._ts()})
-        self.client.publish(
-            topic_cmd_webrtc_ice(device_id),
-            payload,
-            qos=1,
-            retain=False,
-        )
-        logger.info(f"Published WebRTC ICE candidate → {device_id} call_id={call_id}")
-
     def publish_gps_request(self, device_id: str):
         if not self._connected:
             logger.error("Cannot publish GPS request — MQTT not connected")
@@ -331,7 +254,7 @@ class MQTTService:
     @property
     def is_connected(self) -> bool:
         return self._connected
-
+    
 
 # ── Singleton — imported everywhere ───────────────────────────────────────────
 mqtt_service = MQTTService()

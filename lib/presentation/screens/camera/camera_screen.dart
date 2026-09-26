@@ -1,37 +1,31 @@
-// lib/presentation/screens/camera/camera_screen.dart
-// Add standalone parameter — same pattern as AlertsScreen
-
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../data/models/camera_model.dart';
+import '../../../data/providers/camera_provider.dart';
 import '../../widgets/camera/stream_viewer.dart';
 import '../../widgets/camera/camera_control_row.dart';
 import '../../widgets/camera/device_info_card.dart';
 
-class CameraScreen extends StatefulWidget {
+class CameraScreen extends ConsumerStatefulWidget {
   final bool standalone;
   const CameraScreen({super.key, this.standalone = true});
 
   @override
-  State<CameraScreen> createState() => _CameraScreenState();
+  ConsumerState<CameraScreen> createState() => _CameraScreenState();
 }
 
-class _CameraScreenState extends State<CameraScreen> {
-  CameraModel _camera = CameraModel.mock();
+class _CameraScreenState extends ConsumerState<CameraScreen> {
   bool _isRecording = false;
 
-  Future<void> _toggleStream() async {
-    if (_camera.status == CameraStatus.streaming) {
-      setState(() {
-        _camera = _camera.copyWith(status: CameraStatus.offline, latency: '--');
-        _isRecording = false;
-      });
+  Future<void> _toggleStream(CameraModel camera) async {
+    if (camera.status == CameraStatus.streaming ||
+        camera.status == CameraStatus.connecting) {
+      await ref.read(cameraProvider.notifier).stopStream();
+      setState(() => _isRecording = false);
       return;
     }
-    setState(() => _camera = _camera.copyWith(status: CameraStatus.connecting));
-    await Future.delayed(const Duration(seconds: 2));
-    setState(() => _camera = _camera.copyWith(
-          status: CameraStatus.streaming, latency: '42 ms'));
+    await ref.read(cameraProvider.notifier).startStream();
   }
 
   void _onSnapshot() {
@@ -47,8 +41,10 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bool isStreaming  = _camera.status == CameraStatus.streaming;
-    final bool isConnecting = _camera.status == CameraStatus.connecting;
+    final camera = ref.watch(cameraProvider);
+    final renderer = ref.watch(cameraProvider.notifier).remoteRenderer;
+    final bool isStreaming  = camera.status == CameraStatus.streaming;
+    final bool isConnecting = camera.status == CameraStatus.connecting;
 
     final content = SafeArea(
       child: SingleChildScrollView(
@@ -56,20 +52,20 @@ class _CameraScreenState extends State<CameraScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildHeader(),
+            _buildHeader(camera),
             const SizedBox(height: 20),
-            StreamViewer(status: _camera.status),
+            StreamViewer(status: camera.status, renderer: renderer),
             const SizedBox(height: 16),
-            _buildStreamButton(isStreaming, isConnecting),
+            _buildStreamButton(camera, isStreaming, isConnecting),
             const SizedBox(height: 12),
             CameraControlRow(
-              status: _camera.status,
+              status: camera.status,
               isRecording: _isRecording,
               onSnapshot: _onSnapshot,
               onRecord: _onRecord,
             ),
             const SizedBox(height: 20),
-            DeviceInfoCard(camera: _camera),
+            DeviceInfoCard(camera: camera),
           ],
         ),
       ),
@@ -81,7 +77,7 @@ class _CameraScreenState extends State<CameraScreen> {
     return content;
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(CameraModel camera) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -95,7 +91,7 @@ class _CameraScreenState extends State<CameraScreen> {
                       fontSize: 28,
                       fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
-              Text('${_camera.moduleId} · ${_camera.channelLabel}',
+              Text('${camera.moduleId} · ${camera.channelLabel}',
                   style: const TextStyle(
                       color: AppColors.textSecondary, fontSize: 13)),
             ],
@@ -128,12 +124,12 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  Widget _buildStreamButton(bool isStreaming, bool isConnecting) {
+  Widget _buildStreamButton(CameraModel camera, bool isStreaming, bool isConnecting) {
     return SizedBox(
       width: double.infinity,
       height: 56,
       child: ElevatedButton.icon(
-        onPressed: isConnecting ? null : _toggleStream,
+        onPressed: isConnecting ? null : () => _toggleStream(camera),
         icon: isConnecting
             ? const SizedBox(
                 width: 18, height: 18,

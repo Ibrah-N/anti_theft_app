@@ -1,3 +1,4 @@
 aiortc
 pillow
 numpy
+opencv-python

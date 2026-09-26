@@ -89,12 +89,17 @@ class VehicleNotifier extends StateNotifier<AsyncValue<VehicleModel>> {
       case WsMessageType.alert:
       _onAlertReceived(message.payload);
       break;
-      case WsMessageType.commandAck:
+            case WsMessageType.commandAck:
       state = AsyncValue.data(current.copyWithJson(message.payload));
       final cmd = message.payload['cmd'] as String?;
       if (cmd != null) {
         ref.read(pendingCommandsProvider.notifier).clear(cmd);
       }
+      break;
+      case WsMessageType.webrtcOffer:
+      case WsMessageType.webrtcIce:
+      // Handled by cameraProvider's own listener on this same broadcast
+      // stream — nothing for vehicleProvider to do with these.
       break;
       case WsMessageType.unknown:
       break;

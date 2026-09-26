@@ -1,12 +1,13 @@
-
 import 'package:flutter/material.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../data/models/camera_model.dart';
 
 class StreamViewer extends StatelessWidget {
   final CameraStatus status;
+  final RTCVideoRenderer? renderer;
 
-  const StreamViewer({super.key, required this.status});
+  const StreamViewer({super.key, required this.status, this.renderer});
 
   @override
   Widget build(BuildContext context) {
@@ -34,8 +35,7 @@ class StreamViewer extends StatelessWidget {
         return _ConnectingState();
 
       case CameraStatus.streaming:
-        // TODO Step 2: Replace with real MJPEG / WebRTC widget
-        return _LivePlaceholder();
+        return _LiveVideo(renderer: renderer);
     }
   }
 }
@@ -149,15 +149,19 @@ class _ConnectingStateState extends State<_ConnectingState>
   }
 }
 
-// ── Live placeholder ────────────────────────────────────────────────────────
-class _LivePlaceholder extends StatelessWidget {
+// ── Live video ────────────────────────────────────────────────────────────
+class _LiveVideo extends StatelessWidget {
+  final RTCVideoRenderer? renderer;
+  const _LiveVideo({this.renderer});
+
   @override
   Widget build(BuildContext context) {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Replace this Container with your actual video widget in Step 2
-        Container(color: Colors.black),
+        renderer != null
+            ? RTCVideoView(renderer!, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
+            : Container(color: Colors.black),
 
         // Live badge
         Positioned(

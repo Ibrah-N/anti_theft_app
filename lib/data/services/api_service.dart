@@ -147,6 +147,17 @@ class ApiService {
     return response.data;
   }
 
+  // ── Camera / WebRTC ──────────────────────────────────────────────────────
+  Future<Map<String, dynamic>> startCamera() async {
+    final response = await _dio.post('/vehicle/camera/start');
+    return response.data;
+  }
+
+  Future<Map<String, dynamic>> stopCamera() async {
+    final response = await _dio.post('/vehicle/camera/stop');
+    return response.data;
+  }
+
   // ── Alerts ─────────────────────────────────────────────────────────────────
   Future<Map<String, dynamic>> getAlerts({
     String?  category,

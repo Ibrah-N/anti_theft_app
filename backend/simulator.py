@@ -15,6 +15,7 @@ import base64
 from datetime import datetime, timezone
 
 import numpy as np
+import cv2
 from PIL import Image, ImageDraw
 from av import VideoFrame
 from aiortc import (
@@ -53,6 +54,15 @@ MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
 # relay path instead of assuming a direct connection is always possible.
 TURN_SECRET = os.getenv("TURN_SECRET")
 TURN_HOST   = os.getenv("TURN_HOST", "vigilx.duckdns.org")
+
+# ── Video source ──────────────────────────────────────────────────────────────
+# "webcam" = your real laptop camera (more realistic test — actual moving
+# video, actual lighting/focus quirks a real ESP32-P4 feed would also have).
+# "pattern" = the synthetic test-pattern track (no camera hardware needed,
+# useful for headless/CI-style runs). Falls back to pattern automatically if
+# the webcam can't be opened.
+CAMERA_SOURCE = os.getenv("CAMERA_SOURCE", "webcam")
+CAMERA_INDEX  = int(os.getenv("CAMERA_INDEX", "0"))
 
 # ── Device ID — must match vehicle.device_id in database ─────────────────────
 DEVICE_ID = "esp-001"
@@ -261,7 +271,7 @@ CAMERA_SESSION_MAX_SECONDS = 300  # 5 minutes — matches the app's own session 
 _pc: RTCPeerConnection | None = None
 _current_call_id: str | None = None
 _stop_handle = None  # camera_loop.call_later() handle, for the auto-timeout
-
+_video_track = None  # explicit reference so we can release the webcam cleanly
 
 class TestPatternTrack(VideoStreamTrack):
     """
@@ -294,7 +304,58 @@ class TestPatternTrack(VideoStreamTrack):
         frame.time_base = time_base
         return frame
 
+class WebcamTrack(VideoStreamTrack):
+    """
+    Your real laptop camera, captured via OpenCV — a much more realistic
+    test than the synthetic pattern (actual motion, lighting, focus). Same
+    interface as TestPatternTrack, so swapping between them is just a
+    matter of which one gets passed to pc.addTrack().
+    """
+    kind = "video"
 
+    def __init__(self, camera_index: int = 0, width: int = 640, height: int = 480):
+        super().__init__()
+        self._cap = cv2.VideoCapture(camera_index)
+        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        if not self._cap.isOpened():
+            raise RuntimeError(f"Could not open webcam at index {camera_index}")
+        logger.info(f"📷 Webcam opened — index={camera_index} {width}x{height}")
+
+    async def recv(self):
+        pts, time_base = await self.next_timestamp()
+
+        # cv2.VideoCapture.read() is blocking I/O — run it off the event
+        # loop so it doesn't stall MQTT handling or anything else async.
+        loop = asyncio.get_event_loop()
+        ret, frame_bgr = await loop.run_in_executor(None, self._cap.read)
+        if not ret:
+            raise RuntimeError("Failed to read frame from webcam")
+
+        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        frame = VideoFrame.from_ndarray(frame_rgb, format="rgb24")
+        frame.pts = pts
+        frame.time_base = time_base
+        return frame
+
+    def stop(self):
+        super().stop()
+        self._cap.release()
+        logger.info("📷 Webcam released")
+
+
+def _make_video_track():
+    """Real webcam if requested and available, else the synthetic pattern —
+    never crashes the whole camera session just because a webcam is busy or
+    missing."""
+    if CAMERA_SOURCE == "webcam":
+        try:
+            return WebcamTrack(camera_index=CAMERA_INDEX)
+        except Exception as e:
+            logger.warning(f"Could not open webcam ({e}) — falling back to test pattern")
+    return TestPatternTrack()
+
+    
 def _turn_ice_config() -> RTCConfiguration:
     """Mint our own short-lived TURN credentials — same HMAC scheme as the
     backend's turn_credentials.py, so this simulator exercises the real
@@ -321,7 +382,7 @@ def _turn_ice_config() -> RTCConfiguration:
 
 
 async def _camera_start(call_id: str):
-    global _pc, _current_call_id, _stop_handle
+    global _pc, _current_call_id, _stop_handle, _video_track
 
     if _pc is not None:
         logger.info("Replacing existing camera session with new one")
@@ -329,7 +390,8 @@ async def _camera_start(call_id: str):
 
     _current_call_id = call_id
     _pc = RTCPeerConnection(configuration=_turn_ice_config())
-    _pc.addTrack(TestPatternTrack())
+    _video_track = _make_video_track()
+    _pc.addTrack(_video_track)
 
     @_pc.on("connectionstatechange")
     async def on_state_change():
@@ -384,10 +446,13 @@ async def _camera_ice(data: dict, call_id: str):
 
 
 async def _camera_stop():
-    global _pc, _current_call_id, _stop_handle
+    global _pc, _current_call_id, _stop_handle, _video_track
     if _stop_handle:
         _stop_handle.cancel()
         _stop_handle = None
+    if _video_track:
+        _video_track.stop()
+        _video_track = None
     if _pc:
         await _pc.close()
         _pc = None

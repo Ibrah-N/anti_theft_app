@@ -7,7 +7,7 @@ import '../../core/constants/app_constants.dart';
 import 'auth_service.dart';
 
 // ── Message types from backend ─────────────────────────────────────────────
-enum WsMessageType { initialState, statusUpdate, sensorUpdate, alert, commandAck, unknown }
+enum WsMessageType { initialState, statusUpdate, sensorUpdate, alert, commandAck, webrtcOffer, webrtcIce, unknown }
 
 class WsMessage {
   final WsMessageType type;
@@ -22,6 +22,8 @@ class WsMessage {
       'sensor_update'  => WsMessageType.sensorUpdate,
       'alert'          => WsMessageType.alert,
       'command_ack'    => WsMessageType.commandAck,
+      'webrtc_offer'   => WsMessageType.webrtcOffer,
+      'webrtc_ice'     => WsMessageType.webrtcIce,
       _                => WsMessageType.unknown,
     };
 
@@ -38,43 +40,62 @@ class WebSocketService {
   static final WebSocketService instance = WebSocketService._();
 
   WebSocketChannel? _channel;
-  StreamController<WsMessage>? _controller;
+
+  // Persistent for the life of the app — created once, never replaced.
+  // This is what fixes the "listener orphaned after reconnect" bug:
+  // anything that subscribes to `messages` once (like cameraProvider) stays
+  // correctly connected even if the underlying socket reconnects, because
+  // reconnecting only ever feeds into this same controller, never replaces it.
+  final StreamController<WsMessage> _controller =
+      StreamController<WsMessage>.broadcast();
 
   bool get isConnected => _channel != null;
 
+  Stream<WsMessage> get messages => _controller.stream;
+
+  /// Send a message back to the backend — used for WebRTC signaling
+  /// (answer + ICE candidates). Everything else on this socket has been
+  /// one-directional (server → app) until now.
+  void send(Map<String, dynamic> message) {
+    _channel?.sink.add(jsonEncode(message));
+  }
+
   // ── Connect ───────────────────────────────────────────────────────────────
   Future<Stream<WsMessage>> connect() async {
-    await disconnect(); // clean up any existing connection
+    await _closeChannel(); // drop any existing socket, but keep _controller alive
 
     final token = await AuthService.instance.getAccessToken();
     if (token == null) throw Exception('No access token found');
 
     final uri = Uri.parse('${AppConstants.wsUrl}?token=$token');
-    _channel    = WebSocketChannel.connect(uri);
-    _controller = StreamController<WsMessage>.broadcast();
+    _channel = WebSocketChannel.connect(uri);
 
     _channel!.stream.listen(
       (data) {
         try {
           final json    = jsonDecode(data as String);
           final message = WsMessage.fromJson(json);
-          _controller!.add(message);
+          _controller.add(message);
         } catch (e) {
           // ignore malformed messages
         }
       },
-      onDone:  () => _controller?.close(),
-      onError: (_) => _controller?.close(),
+      onDone:  () => _channel = null,
+      onError: (_) => _channel = null,
     );
 
-    return _controller!.stream;
+    return _controller.stream;
   }
 
   // ── Disconnect ────────────────────────────────────────────────────────────
+  // Only closes the socket itself — _controller stays alive for the app's
+  // lifetime so existing listeners never get silently orphaned.
   Future<void> disconnect() async {
+    await _closeChannel();
+  }
+
+  Future<void> _closeChannel() async {
     await _channel?.sink.close();
-    await _controller?.close();
-    _channel    = null;
-    _controller = null;
+    _channel = null;
   }
 }

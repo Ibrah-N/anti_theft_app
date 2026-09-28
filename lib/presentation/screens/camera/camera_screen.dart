@@ -6,6 +6,7 @@ import '../../../data/providers/camera_provider.dart';
 import '../../widgets/camera/stream_viewer.dart';
 import '../../widgets/camera/camera_control_row.dart';
 import '../../widgets/camera/device_info_card.dart';
+import 'fullscreen_camera_screen.dart';
 
 class CameraScreen extends ConsumerStatefulWidget {
   final bool standalone;
@@ -37,7 +38,17 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
     ));
   }
 
-  void _onRecord() => setState(() => _isRecording = !_isRecording);
+    void _onRecord() => setState(() => _isRecording = !_isRecording);
+
+  void _openFullscreen() {
+    // rootNavigator so it covers the bottom nav bar too, not just the tab body.
+    Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute(
+        builder: (_) => const FullscreenCameraScreen(),
+        fullscreenDialog: true,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +65,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
           children: [
             _buildHeader(camera),
             const SizedBox(height: 20),
-            StreamViewer(status: camera.status, renderer: renderer),
+            StreamViewer(
+              status: camera.status,
+              renderer: renderer,
+              onFullscreen: _openFullscreen,
+            ),
             const SizedBox(height: 16),
             _buildStreamButton(camera, isStreaming, isConnecting),
             const SizedBox(height: 12),

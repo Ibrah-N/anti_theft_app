@@ -6,8 +6,14 @@ import '../../../data/models/camera_model.dart';
 class StreamViewer extends StatelessWidget {
   final CameraStatus status;
   final RTCVideoRenderer? renderer;
+  final VoidCallback? onFullscreen;
 
-  const StreamViewer({super.key, required this.status, this.renderer});
+  const StreamViewer({
+    super.key,
+    required this.status,
+    this.renderer,
+    this.onFullscreen,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +41,7 @@ class StreamViewer extends StatelessWidget {
         return _ConnectingState();
 
       case CameraStatus.streaming:
-        return _LiveVideo(renderer: renderer);
+        return _LiveVideo(renderer: renderer, onFullscreen: onFullscreen);
     }
   }
 }
@@ -149,10 +155,11 @@ class _ConnectingStateState extends State<_ConnectingState>
   }
 }
 
-// ── Live video ────────────────────────────────────────────────────────────
+// ── Live video ────────────────────────────────────────────────────────────]
 class _LiveVideo extends StatelessWidget {
   final RTCVideoRenderer? renderer;
-  const _LiveVideo({this.renderer});
+  final VoidCallback? onFullscreen;
+  const _LiveVideo({this.renderer, this.onFullscreen});
 
   @override
   Widget build(BuildContext context) {
@@ -189,6 +196,22 @@ class _LiveVideo extends StatelessWidget {
             ),
           ),
         ),
+
+        // Fullscreen button
+        if (onFullscreen != null)
+          Positioned(
+            right: 8,
+            bottom: 8,
+            child: Material(
+              color: Colors.black54,
+              shape: const CircleBorder(),
+              child: IconButton(
+                icon: const Icon(Icons.fullscreen_rounded, color: Colors.white),
+                tooltip: 'Fullscreen',
+                onPressed: onFullscreen,
+              ),
+            ),
+          ),
       ],
     );
   }

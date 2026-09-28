@@ -26,6 +26,7 @@ from aiortc import (
     VideoStreamTrack,
 )
 from aiortc.sdp import candidate_from_sdp
+from aiortc.mediastreams import MediaStreamError
 
 import paho.mqtt.client as mqtt
 from dotenv import load_dotenv
@@ -260,8 +261,21 @@ def publish_ack(cmd: str, state: bool, success: bool = True):
 # the synchronous MQTT callbacks above.
 camera_loop = asyncio.new_event_loop()
 
+def _camera_loop_exception_handler(loop, context):
+    # coturn deliberately refuses to relay to private/loopback peers
+    # (denied-peer-ip in turnserver.conf), and aioice reports each refusal
+    # as an unhandled task error. It's expected and harmless — the
+    # connection still succeeds over a direct path — so keep it out of the
+    # logs. Anything else still gets reported normally.
+    exc = context.get("exception")
+    if exc is not None and "Forbidden IP" in str(exc):
+        logger.debug(f"TURN refused private peer (expected): {exc}")
+        return
+    loop.default_exception_handler(context)
+
 def _start_camera_loop():
     asyncio.set_event_loop(camera_loop)
+    camera_loop.set_exception_handler(_camera_loop_exception_handler)
     camera_loop.run_forever()
 
 threading.Thread(target=_start_camera_loop, daemon=True, name="camera-loop").start()
@@ -319,18 +333,31 @@ class WebcamTrack(VideoStreamTrack):
         self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
         if not self._cap.isOpened():
+            self._cap.release()
             raise RuntimeError(f"Could not open webcam at index {camera_index}")
+        # read() runs in a worker thread while stop() runs on the event loop.
+        # Releasing the device mid-read (or twice) can crash OpenCV's camera
+        # backend outright — so all access goes through this lock, and
+        # release happens exactly once.
+        self._lock = threading.Lock()
+        self._released = False
         logger.info(f"📷 Webcam opened — index={camera_index} {width}x{height}")
+
+    def _read_frame(self):
+        with self._lock:
+            if self._released:
+                return False, None
+            return self._cap.read()
 
     async def recv(self):
         pts, time_base = await self.next_timestamp()
 
         # cv2.VideoCapture.read() is blocking I/O — run it off the event
         # loop so it doesn't stall MQTT handling or anything else async.
-        loop = asyncio.get_event_loop()
-        ret, frame_bgr = await loop.run_in_executor(None, self._cap.read)
+        loop = asyncio.get_running_loop()
+        ret, frame_bgr = await loop.run_in_executor(None, self._read_frame)
         if not ret:
-            raise RuntimeError("Failed to read frame from webcam")
+            raise MediaStreamError  # track ended — sender shuts down cleanly
 
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         frame = VideoFrame.from_ndarray(frame_rgb, format="rgb24")
@@ -340,9 +367,12 @@ class WebcamTrack(VideoStreamTrack):
 
     def stop(self):
         super().stop()
-        self._cap.release()
+        with self._lock:          # waits for any in-flight read to finish
+            if self._released:
+                return            # already released — stop() can be called twice
+            self._released = True
+            self._cap.release()
         logger.info("📷 Webcam released")
-
 
 def _make_video_track():
     """Real webcam if requested and available, else the synthetic pattern —
@@ -393,10 +423,15 @@ async def _camera_start(call_id: str):
     _video_track = _make_video_track()
     _pc.addTrack(_video_track)
 
-    @_pc.on("connectionstatechange")
+    # Bind the handler to THIS connection, not the module-level _pc. When a
+    # new session replaces an old one, the old connection's "closed" event
+    # fires afterwards — it must not tear down the new session.
+    pc = _pc
+
+    @pc.on("connectionstatechange")
     async def on_state_change():
-        logger.info(f"📷 WebRTC connection state → {_pc.connectionState}")
-        if _pc.connectionState in ("failed", "closed"):
+        logger.info(f"📷 WebRTC connection state → {pc.connectionState}")
+        if pc.connectionState in ("failed", "closed") and pc is _pc:
             await _camera_stop()
 
     offer = await _pc.createOffer()
@@ -447,17 +482,24 @@ async def _camera_ice(data: dict, call_id: str):
 
 async def _camera_stop():
     global _pc, _current_call_id, _stop_handle, _video_track
-    if _stop_handle:
-        _stop_handle.cancel()
-        _stop_handle = None
-    if _video_track:
-        _video_track.stop()
-        _video_track = None
-    if _pc:
-        await _pc.close()
-        _pc = None
-    logger.info(f"📷 WebRTC session ended — call_id={_current_call_id}")
-    _current_call_id = None
+
+    # Take local references and clear the globals FIRST, before awaiting
+    # anything. pc.close() triggers a "closed" state event that calls back
+    # into here — by then the globals are empty, so that second call is a
+    # harmless no-op instead of a double stop/release.
+    pc, track, call_id, handle = _pc, _video_track, _current_call_id, _stop_handle
+    _pc = _video_track = _stop_handle = _current_call_id = None
+
+    if handle:
+        handle.cancel()
+    if pc is None and track is None:
+        return
+
+    if track:
+        track.stop()
+    if pc:
+        await pc.close()
+    logger.info(f"📷 WebRTC session ended — call_id={call_id}")
 
 
 # ── Wire callbacks ────────────────────────────────────────────────────────────

@@ -29,16 +29,43 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
     await ref.read(cameraProvider.notifier).startStream();
   }
 
-  void _onSnapshot() {
+    void _showSnack(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: const Text('Snapshot saved'),
-      backgroundColor: AppColors.statusGreenBg,
+      content: Text(message),
+      backgroundColor: isError ? AppColors.statusRedBg : AppColors.statusGreenBg,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
     ));
   }
 
-    void _onRecord() => setState(() => _isRecording = !_isRecording);
+  Future<void> _onSnapshot() async {
+    try {
+      await ref.read(cameraProvider.notifier).takeSnapshot();
+      if (mounted) _showSnack('Snapshot saved');
+    } catch (e) {
+      if (mounted) _showSnack('Snapshot failed', isError: true);
+    }
+  }
+
+  Future<void> _onRecord() async {
+    final notifier = ref.read(cameraProvider.notifier);
+    if (_isRecording) {
+      setState(() => _isRecording = false);
+      try {
+        await notifier.stopRecording();
+        if (mounted) _showSnack('Recording saved');
+      } catch (e) {
+        if (mounted) _showSnack('Recording upload failed', isError: true);
+      }
+    } else {
+      try {
+        await notifier.startRecording();
+        setState(() => _isRecording = true);
+      } catch (e) {
+        if (mounted) _showSnack('Could not start recording', isError: true);
+      }
+    }
+  }
 
   void _openFullscreen() {
     // rootNavigator so it covers the bottom nav bar too, not just the tab body.

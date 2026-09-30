@@ -1,7 +1,10 @@
 // lib/data/services/api_service.dart
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/constants/app_constants.dart';
+
+
 
 class ApiService {
   ApiService._();
@@ -153,9 +156,30 @@ class ApiService {
     return response.data;
   }
 
-  Future<Map<String, dynamic>> stopCamera() async {
+    Future<Map<String, dynamic>> stopCamera() async {
     final response = await _dio.post('/vehicle/camera/stop');
     return response.data;
+  }
+
+  // Dio sets the correct multipart/form-data content-type + boundary
+  // automatically whenever the request body is a FormData object,
+  // overriding the Dio instance's default 'application/json' header for
+  // just this one request.
+  Future<void> uploadSnapshot(Uint8List bytes) async {
+    final formData = FormData.fromMap({
+      'media_type': 'snapshot',
+      'file': MultipartFile.fromBytes(bytes, filename: 'snapshot.png'),
+    });
+    await _dio.post('/vehicle/camera/media', data: formData);
+  }
+
+  Future<void> uploadRecording(Uint8List bytes, double durationSeconds) async {
+    final formData = FormData.fromMap({
+      'media_type': 'recording',
+      'duration_seconds': durationSeconds.toString(),
+      'file': MultipartFile.fromBytes(bytes, filename: 'recording.mp4'),
+    });
+    await _dio.post('/vehicle/camera/media', data: formData);
   }
 
   // ── Alerts ─────────────────────────────────────────────────────────────────

@@ -1,8 +1,10 @@
 // lib/data/providers/camera_provider.dart
 
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/camera_model.dart';
 import '../services/api_service.dart';
 import '../services/websocket_service.dart';
@@ -23,9 +25,25 @@ class CameraNotifier extends StateNotifier<CameraModel> {
   StreamSubscription<WsMessage>? _wsSub;
   Timer? _sessionTimeout;
 
+  // The actual remote video track — captureFrame() and MediaRecorder both
+  // need this directly; the renderer alone only knows how to paint pixels.
+  MediaStreamTrack? _remoteVideoTrack;
+
+  MediaRecorder? _recorder;
+  String? _recordingPath;
+  DateTime? _recordingStartedAt;
+  bool get isRecording => _recorder != null;
+
   Future<void> _ensureRenderer() async {
     if (!_rendererInitialized) {
       await remoteRenderer.initialize();
+      remoteRenderer.onResize = () {
+        final w = remoteRenderer.videoWidth;
+        final h = remoteRenderer.videoHeight;
+        if (w > 0 && h > 0) {
+          state = state.copyWith(resolution: '${w}x$h');
+        }
+      };
       _rendererInitialized = true;
     }
   }
@@ -47,6 +65,7 @@ class CameraNotifier extends StateNotifier<CameraModel> {
       _pc!.onTrack = (RTCTrackEvent event) {
         if (event.track.kind == 'video' && event.streams.isNotEmpty) {
           remoteRenderer.srcObject = event.streams.first;
+          _remoteVideoTrack = event.track;
         }
       };
 
@@ -125,14 +144,89 @@ class CameraNotifier extends StateNotifier<CameraModel> {
     await _teardown();
   }
 
+    Future<void> takeSnapshot() async {
+    final track = _remoteVideoTrack;
+    if (state.status != CameraStatus.streaming || track == null) {
+      throw Exception('No active stream to capture');
+    }
+    final bytes = (await track.captureFrame()).asUint8List();
+    await ApiService.instance.uploadSnapshot(bytes);
+  }
+
+  Future<void> startRecording() async {
+    final track = _remoteVideoTrack;
+    if (state.status != CameraStatus.streaming || track == null) {
+      throw Exception('No active stream to record');
+    }
+    if (_recorder != null) return; // already recording
+
+    final tempDir = await getTemporaryDirectory();
+    final path =
+        '${tempDir.path}/vigilx_${DateTime.now().millisecondsSinceEpoch}.mp4';
+
+    // albumName: null — write only to our own temp path, don't also save
+    // a copy into the device's photo gallery.
+    final recorder = MediaRecorder(albumName: null);
+    await recorder.start(path, videoTrack: track);
+
+    _recorder = recorder;
+    _recordingPath = path;
+    _recordingStartedAt = DateTime.now();
+  }
+
+  Future<void> stopRecording() async {
+    final recorder = _recorder;
+    final path = _recordingPath;
+    final startedAt = _recordingStartedAt;
+    _recorder = null;
+    _recordingPath = null;
+    _recordingStartedAt = null;
+
+    if (recorder == null || path == null) return;
+
+    try {
+      await recorder.stop();
+      final file = File(path);
+      final bytes = await file.readAsBytes();
+      final duration = startedAt == null
+          ? 0.0
+          : DateTime.now().difference(startedAt).inMilliseconds / 1000.0;
+
+      await ApiService.instance.uploadRecording(bytes, duration);
+      await file.delete();
+    } catch (e) {
+      // Best-effort cleanup of the local file even if the upload failed —
+      // no point leaving a half-finished recording sitting in temp storage.
+      try {
+        await File(path).delete();
+      } catch (_) {}
+      rethrow;
+    }
+  }
+
   Future<void> _teardown() async {
     _sessionTimeout?.cancel();
     _sessionTimeout = null;
+
+    // A dropped connection mid-recording shouldn't leave a dangling
+    // recorder/file behind — best-effort stop, ignore any upload failure
+    // since the connection is already gone anyway.
+    if (_recorder != null) {
+      try {
+        await stopRecording();
+      } catch (_) {}
+    }
+
     await _pc?.close();
     _pc = null;
     _callId = null;
+    _remoteVideoTrack = null;
     remoteRenderer.srcObject = null;
-    state = state.copyWith(status: CameraStatus.offline, latency: '--');
+    state = state.copyWith(
+      status: CameraStatus.offline,
+      latency: '--',
+      resolution: '--',
+    );
   }
 
   @override

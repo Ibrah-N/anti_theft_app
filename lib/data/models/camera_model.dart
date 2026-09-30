@@ -19,12 +19,15 @@ class CameraModel {
     this.streamUrl,
   });
 
-  /// Mock — swap for real data in Step 2
+  /// Resolution now comes from the real video track once frames arrive
+  /// (see camera_provider's onResize handler). Night mode has no real
+  /// source yet — no firmware exists to report it — so it stays "—"
+  /// rather than showing a fabricated capability.
   factory CameraModel.mock() => const CameraModel(
-        moduleId:     'ESP32-CAM',
+        moduleId:     'ESP32-P4',
         channelLabel: 'Channel 01',
-        resolution:   '720p HD',
-        nightMode:    'Auto IR',
+        resolution:   '--',
+        nightMode:    '—',
         latency:      '--',
         status:       CameraStatus.offline,
         streamUrl:    null,

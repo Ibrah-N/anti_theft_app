@@ -15,7 +15,7 @@ import '../services/websocket_service.dart';
 class CameraNotifier extends StateNotifier<CameraModel> {
   final Ref ref;
   CameraNotifier(this.ref) : super(CameraModel.mock()) {
-    _wsSub = WebSocketService.instance.messages?.listen(_onWsMessage);
+    _wsSub = WebSocketService.instance.messages.listen(_onWsMessage);
   }
 
   RTCPeerConnection? _pc;

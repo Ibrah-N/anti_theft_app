@@ -1,13 +1,20 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../data/models/camera_model.dart';
+import '../../../data/models/camera_media_model.dart';
 import '../../../data/providers/camera_provider.dart';
+import '../../../data/providers/camera_media_provider.dart';
+import '../../../data/services/api_service.dart';
 import '../../widgets/camera/stream_viewer.dart';
 import '../../widgets/camera/camera_control_row.dart';
 import '../../widgets/camera/device_info_card.dart';
+import '../../widgets/camera/media_gallery_list.dart';
 import 'fullscreen_camera_screen.dart';
+import 'media_viewer_screen.dart';
 
 class CameraScreen extends ConsumerStatefulWidget {
   final bool standalone;
@@ -42,6 +49,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
   Future<void> _onSnapshot() async {
     try {
       await ref.read(cameraProvider.notifier).takeSnapshot();
+      await ref.read(cameraMediaProvider.notifier).load();
       if (mounted) _showSnack('Snapshot saved');
     } catch (e) {
       if (mounted) _showSnack('Snapshot failed', isError: true);
@@ -54,6 +62,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
       setState(() => _isRecording = false);
       try {
         await notifier.stopRecording();
+        await ref.read(cameraMediaProvider.notifier).load();
         if (mounted) _showSnack('Recording saved');
       } catch (e) {
         if (mounted) _showSnack('Recording upload failed', isError: true);
@@ -65,6 +74,50 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
       } catch (e) {
         if (mounted) _showSnack('Could not start recording', isError: true);
       }
+    }
+  }
+
+  void _onOpenMedia(CameraMediaModel media) {
+    Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute(builder: (_) => MediaViewerScreen(media: media)),
+    );
+  }
+
+  Future<void> _onDownloadMedia(CameraMediaModel media) async {
+    try {
+      final bytes = await ApiService.instance.downloadMediaBytes(media.id);
+      final tempDir = await getTemporaryDirectory();
+      final ext = media.mediaType == CameraMediaType.recording ? 'mp4' : 'png';
+      final path = '${tempDir.path}/${media.displayName}.$ext';
+      await File(path).writeAsBytes(bytes);
+      await Share.shareXFiles([XFile(path)], fileNameOverrides: ['${media.displayName}.$ext']);
+    } catch (e) {
+      if (mounted) _showSnack('Download failed', isError: true);
+    }
+  }
+
+  Future<void> _onDeleteMedia(CameraMediaModel media) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardBg,
+        title: const Text('Delete this item?', style: TextStyle(color: Colors.white)),
+        content: Text('${media.displayName} will be permanently deleted.',
+            style: const TextStyle(color: AppColors.textSecondary)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: AppColors.statusRed)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(cameraMediaProvider.notifier).delete(media.id);
+    } catch (e) {
+      if (mounted) _showSnack('Delete failed', isError: true);
     }
   }
 
@@ -82,6 +135,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
   Widget build(BuildContext context) {
     final camera = ref.watch(cameraProvider);
     final renderer = ref.watch(cameraProvider.notifier).remoteRenderer;
+    final mediaState = ref.watch(cameraMediaProvider);
     final bool isStreaming  = camera.status == CameraStatus.streaming;
     final bool isConnecting = camera.status == CameraStatus.connecting;
 
@@ -109,6 +163,13 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
             ),
             const SizedBox(height: 20),
             DeviceInfoCard(camera: camera),
+            const SizedBox(height: 20),
+            MediaGalleryList(
+              state: mediaState,
+              onOpen: _onOpenMedia,
+              onDownload: _onDownloadMedia,
+              onDelete: _onDeleteMedia,
+            ),
           ],
         ),
       ),

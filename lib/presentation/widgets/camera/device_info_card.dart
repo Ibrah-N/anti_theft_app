@@ -31,18 +31,12 @@ class DeviceInfoCard extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // 2×2 info grid
-          Row(
-            children: [
-              Expanded(child: _InfoCell(label: 'MODULE',     value: camera.moduleId)),
-              Expanded(child: _InfoCell(label: 'RESOLUTION', value: camera.resolution)),
-            ],
-          ),
-          const SizedBox(height: 16),
+          // Latency + resolution only, per request — module/night-mode
+          // dropped since there's no real data source for them yet.
           Row(
             children: [
               Expanded(child: _InfoCell(label: 'LATENCY',    value: camera.latency)),
-              Expanded(child: _InfoCell(label: 'NIGHT MODE', value: camera.nightMode)),
+              Expanded(child: _InfoCell(label: 'RESOLUTION', value: camera.resolution)),
             ],
           ),
         ],

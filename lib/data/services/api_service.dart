@@ -173,13 +173,45 @@ class ApiService {
     await _dio.post('/vehicle/camera/media', data: formData);
   }
 
-  Future<void> uploadRecording(Uint8List bytes, double durationSeconds) async {
+    Future<void> uploadRecording(Uint8List bytes, double durationSeconds) async {
     final formData = FormData.fromMap({
       'media_type': 'recording',
       'duration_seconds': durationSeconds.toString(),
       'file': MultipartFile.fromBytes(bytes, filename: 'recording.mp4'),
     });
     await _dio.post('/vehicle/camera/media', data: formData);
+  }
+
+  Future<List<Map<String, dynamic>>> listCameraMedia({int limit = 50, int offset = 0}) async {
+    final response = await _dio.get('/vehicle/camera/media', queryParameters: {
+      'limit': limit,
+      'offset': offset,
+    });
+    return List<Map<String, dynamic>>.from(response.data['items'] as List);
+  }
+
+  Future<void> deleteCameraMedia(int id) async {
+    await _dio.delete('/vehicle/camera/media/$id');
+  }
+
+  /// Full download URL for a media item — used by Image.network and
+  /// VideoPlayerController, which bypass Dio's interceptor and need the
+  /// auth header attached manually via [authHeaders].
+  String mediaDownloadUrl(int id) => '${AppConstants.apiUrl}/vehicle/camera/media/$id/file';
+
+  Future<Map<String, String>> authHeaders() async {
+    final token = await _storage.read(key: AppConstants.keyAccessToken);
+    return token != null ? {'Authorization': 'Bearer $token'} : {};
+  }
+
+  /// Raw bytes — used for "Download", since saving/sharing a file needs
+  /// actual bytes on disk, not a streamed network URL.
+  Future<Uint8List> downloadMediaBytes(int id) async {
+    final response = await _dio.get<List<int>>(
+      '/vehicle/camera/media/$id/file',
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return Uint8List.fromList(response.data!);
   }
 
   // ── Alerts ─────────────────────────────────────────────────────────────────

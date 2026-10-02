@@ -70,6 +70,13 @@ dependencies:
 
   path_provider: ^2.1.4
 
+  # In-app playback for saved recordings/snapshots
+  video_player: ^2.14.0
+
+  # "Download" — saves/shares a fetched file via the native share sheet
+  share_plus: ^12.0.2
+
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

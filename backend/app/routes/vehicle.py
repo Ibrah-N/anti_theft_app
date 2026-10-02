@@ -351,8 +351,14 @@ async def upload_camera_media(
         dest_path.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail="Upload failed")
 
+    existing_count = db.query(CameraMedia).filter(
+        CameraMedia.vehicle_id == vehicle.id,
+        CameraMedia.media_type == media_type,
+    ).count()
+
     media = CameraMedia(
         vehicle_id=vehicle.id,
+        sequence_number=existing_count + 1,
         media_type=media_type,
         file_path=str(dest_path),
         file_size_bytes=size,

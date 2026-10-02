@@ -8,6 +8,7 @@ from app.models.camera_media import CameraMediaType
 
 class CameraMediaResponse(BaseModel):
     id:               int
+    sequence_number:  int
     media_type:       CameraMediaType
     file_size_bytes:  int
     duration_seconds: float | None

@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 import enum
 
-from sqlalchemy import String, BigInteger, Float, ForeignKey, DateTime, Enum
+from sqlalchemy import String, BigInteger, Float, Integer, ForeignKey, DateTime, Enum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -20,6 +20,11 @@ class CameraMedia(Base):
     id:               Mapped[int]  = mapped_column(primary_key=True, index=True)
     vehicle_id:       Mapped[int]  = mapped_column(ForeignKey("vehicles.id"), nullable=False, index=True)
     media_type:       Mapped[CameraMediaType] = mapped_column(Enum(CameraMediaType), nullable=False)
+
+    # Per-vehicle, per-type counter (1st snapshot = 1, 2nd = 2, ...) — stable
+    # even if an earlier item is later deleted. Used client-side to build
+    # display names like "snap_3_date_01_10_26_time_18_45".
+    sequence_number:  Mapped[int] = mapped_column(Integer, nullable=False)
 
     # Absolute path on the server's disk (see settings.MEDIA_ROOT) — not
     # exposed directly to clients; downloads always go through the

@@ -11,6 +11,7 @@ from app.models import User, Vehicle, Alert
 from app.routes import auth, vehicle, alerts, gps, ws
 from app.services.mqtt_service import mqtt_service
 from app.services.mqtt_handlers import handle_mqtt_message
+from app.services.media_cleanup import start_cleanup_thread
 
 
 import firebase_admin
@@ -73,6 +74,8 @@ def startup():
     thread.start()
     mqtt_service.set_db_callback(handle_mqtt_message)
     logger.info("MQTT service starting in background thread")
+
+    start_cleanup_thread()
 
 @app.on_event("shutdown")
 def shutdown():

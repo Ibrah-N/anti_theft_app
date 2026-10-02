@@ -25,6 +25,13 @@ class CameraNotifier extends StateNotifier<CameraModel> {
   StreamSubscription<WsMessage>? _wsSub;
   Timer? _sessionTimeout;
 
+  // If the connection drops before ever reaching "connected" (a transient
+  // network path failure, common over flaky Wi-Fi/emulator NAT), retry the
+  // whole session exactly once automatically before giving up and showing
+  // "offline" to the user.
+  bool _connectedOnce = false;
+  bool _autoRetried = false;
+
   // The actual remote video track — captureFrame() and MediaRecorder both
   // need this directly; the renderer alone only knows how to paint pixels.
   MediaStreamTrack? _remoteVideoTrack;
@@ -48,9 +55,12 @@ class CameraNotifier extends StateNotifier<CameraModel> {
     }
   }
 
-  Future<void> startStream() async {
+  Future<void> startStream({bool isRetry = false}) async {
     if (state.status != CameraStatus.offline) return;
+    if (!isRetry) _autoRetried = false; // fresh budget for a new user-initiated attempt
+    _connectedOnce = false;
     await _ensureRenderer();
+
     state = state.copyWith(status: CameraStatus.connecting, latency: '--');
 
     try {
@@ -85,10 +95,16 @@ class CameraNotifier extends StateNotifier<CameraModel> {
 
       _pc!.onConnectionState = (RTCPeerConnectionState connState) {
         if (connState == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+          _connectedOnce = true;
           state = state.copyWith(status: CameraStatus.streaming, latency: 'live');
         } else if (connState == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
                    connState == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
+          final shouldRetry = !_connectedOnce && !_autoRetried;
           _teardown();
+          if (shouldRetry) {
+            _autoRetried = true;
+            Future.delayed(const Duration(milliseconds: 600), () => startStream(isRetry: true));
+          }
         }
       };
 

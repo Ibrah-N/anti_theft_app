@@ -15,6 +15,7 @@ import '../settings/settings_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/providers/vehicle_provider.dart';
 import '../../../data/providers/alerts_provider.dart';
+import '../../../core/security_gate.dart';
 
 import '../../../main.dart';
 
@@ -75,10 +76,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     );
   }
 
-  void _toggleArm() {
-    ref.read(vehicleProvider.notifier).toggleArm(
-      !(ref.read(vehicleProvider).valueOrNull?.isArmed ?? true),
-    );
+  Future<void> _toggleArm() async {
+    final targetState = !(ref.read(vehicleProvider).valueOrNull?.isArmed ?? true);
+
+    // Only gate disarming — arming doesn't reduce security, no check needed.
+    if (!targetState) {
+      final ok = await requireSecurityGate(context, ref, 'Disarm vehicle');
+      if (!ok) return;
+    }
+
+    ref.read(vehicleProvider.notifier).toggleArm(targetState);
   }
 
   // ── Body switcher ─────────────────────────────────────────────────────────

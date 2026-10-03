@@ -76,6 +76,9 @@ dependencies:
   # "Download" — saves/shares a fetched file via the native share sheet
   share_plus: ^12.0.2
 
+  # Biometric / device-passcode gate before sensitive actions
+  local_auth: ^3.0.2
+
 
 dev_dependencies:
   flutter_test:

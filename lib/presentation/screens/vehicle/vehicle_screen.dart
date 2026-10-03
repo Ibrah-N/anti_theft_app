@@ -9,6 +9,7 @@ import '../../widgets/vehicle/zone_status_card.dart';
 import '../../widgets/vehicle/control_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/providers/vehicle_provider.dart';
+import '../../../core/security_gate.dart';
 
 
 
@@ -76,14 +77,26 @@ class _VehicleScreenState extends ConsumerState<VehicleScreen> {
     );
   }
 
-  void _toggleLock(bool locked) =>
-      ref.read(vehicleProvider.notifier).toggleLock(locked);
+  Future<void> _toggleLock(bool locked) async {
+    // Only gate unlocking — locking the doors doesn't reduce security.
+    if (!locked) {
+      final ok = await requireSecurityGate(context, ref, 'Unlock doors');
+      if (!ok) return;
+    }
+    ref.read(vehicleProvider.notifier).toggleLock(locked);
+  }
 
   void _toggleMirror(String position, bool folded) =>
       ref.read(vehicleProvider.notifier).toggleMirror(position, folded);
 
-  void _toggleStart(bool started) =>
-      ref.read(vehicleProvider.notifier).toggleStart(started);
+  Future<void> _toggleStart(bool started) async {
+    // Only gate starting the engine — stopping it doesn't reduce security.
+    if (started) {
+      final ok = await requireSecurityGate(context, ref, 'Start engine');
+      if (!ok) return;
+    }
+    ref.read(vehicleProvider.notifier).toggleStart(started);
+  }
 
   void _toggleAc(bool on) =>
       ref.read(vehicleProvider.notifier).toggleAc(on);

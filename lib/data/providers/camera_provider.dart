@@ -2,6 +2,7 @@
 
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:path_provider/path_provider.dart';
@@ -32,6 +33,22 @@ class CameraNotifier extends StateNotifier<CameraModel> {
   bool _connectedOnce = false;
   bool _autoRetried = false;
 
+  // Our ICE candidates must reach the device only AFTER it has our answer.
+  // setLocalDescription() starts candidate gathering immediately, so without
+  // this they race ahead of the answer and the device can't use them (it has
+  // no remote description yet). That breaks every path that needs TURN.
+  bool _answerSent = false;
+  final List<RTCIceCandidate> _pendingLocalCandidates = [];
+
+  // Same problem in the other direction: never add a remote candidate before
+  // setRemoteDescription(offer) has finished.
+  bool _remoteDescSet = false;
+  final List<RTCIceCandidate> _pendingRemoteCandidates = [];
+
+  // Serialises incoming WebSocket signaling so an ICE message can't overtake
+  // the offer that is still being processed.
+  Future<void> _wsChain = Future.value();
+
   // The actual remote video track — captureFrame() and MediaRecorder both
   // need this directly; the renderer alone only knows how to paint pixels.
   MediaStreamTrack? _remoteVideoTrack;
@@ -59,6 +76,12 @@ class CameraNotifier extends StateNotifier<CameraModel> {
     if (state.status != CameraStatus.offline) return;
     if (!isRetry) _autoRetried = false; // fresh budget for a new user-initiated attempt
     _connectedOnce = false;
+    _answerSent = false;
+    _remoteDescSet = false;
+    _pendingLocalCandidates.clear();
+    _pendingRemoteCandidates.clear();
+    _wsChain = Future.value(); // never inherit a stuck handler from an old session
+    debugPrint('[WebRTC] startStream (isRetry=$isRetry)');
     await _ensureRenderer();
 
     state = state.copyWith(status: CameraStatus.connecting, latency: '--');
@@ -66,10 +89,12 @@ class CameraNotifier extends StateNotifier<CameraModel> {
     try {
       final response = await ApiService.instance.startCamera();
       _callId = response['call_id'] as String;
+      debugPrint('[WebRTC] camera/start OK, call_id=$_callId');
       final iceServers = (response['ice_servers'] as List)
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
 
+      debugPrint('[WebRTC] ICE servers: ${iceServers.map((e) => e['urls']).toList()}');
       _pc = await createPeerConnection({'iceServers': iceServers});
 
       _pc!.onTrack = (RTCTrackEvent event) {
@@ -80,17 +105,19 @@ class CameraNotifier extends StateNotifier<CameraModel> {
       };
 
       _pc!.onIceCandidate = (RTCIceCandidate candidate) {
-        final id = _callId;
-        if (id == null) return;
-        WebSocketService.instance.send({
-          'type': 'webrtc_ice',
-          'payload': {
-            'call_id':       id,
-            'candidate':     candidate.candidate,
-            'sdpMid':        candidate.sdpMid,
-            'sdpMLineIndex': candidate.sdpMLineIndex,
-          },
-        });
+        debugPrint('[WebRTC] local candidate: ${candidate.candidate}');
+        if (!_answerSent) {
+          _pendingLocalCandidates.add(candidate);
+          return;
+        }
+        _sendLocalCandidate(candidate);
+      };
+
+      _pc!.onIceConnectionState = (RTCIceConnectionState s) {
+        debugPrint('[WebRTC] ICE connection state: $s');
+      };
+      _pc!.onIceGatheringState = (RTCIceGatheringState s) {
+        debugPrint('[WebRTC] ICE gathering state: $s');
       };
 
       _pc!.onConnectionState = (RTCPeerConnectionState connState) {
@@ -119,7 +146,29 @@ class CameraNotifier extends StateNotifier<CameraModel> {
     }
   }
 
-  Future<void> _onWsMessage(WsMessage message) async {
+  void _sendLocalCandidate(RTCIceCandidate candidate) {
+    final id = _callId;
+    if (id == null) return;
+    WebSocketService.instance.send({
+      'type': 'webrtc_ice',
+      'payload': {
+        'call_id':       id,
+        'candidate':     candidate.candidate,
+        'sdpMid':        candidate.sdpMid,
+        'sdpMLineIndex': candidate.sdpMLineIndex,
+      },
+    });
+  }
+
+  // Queue messages so they are handled strictly one at a time, in order.
+  void _onWsMessage(WsMessage message) {
+    _wsChain = _wsChain.then((_) => _handleWsMessage(message)).catchError((e) {
+      debugPrint('[WebRTC] signaling error: $e');
+    });
+  }
+
+  Future<void> _handleWsMessage(WsMessage message) async {
+    debugPrint('[WebRTC] ws message: ${message.type} (pc=${_pc != null}, call=$_callId)');
     if (_pc == null || _callId == null) return;
     if (message.payload['call_id'] != _callId) return; // stale/foreign session
 
@@ -127,21 +176,43 @@ class CameraNotifier extends StateNotifier<CameraModel> {
       case WsMessageType.webrtcOffer:
         _sessionTimeout?.cancel();
         final sdp = message.payload['sdp'] as String;
+        debugPrint('[WebRTC] offer received, applying it');
         await _pc!.setRemoteDescription(RTCSessionDescription(sdp, 'offer'));
+        debugPrint('[WebRTC] remote description set');
+        _remoteDescSet = true;
+        for (final c in _pendingRemoteCandidates) {
+          await _pc!.addCandidate(c);
+        }
+        _pendingRemoteCandidates.clear();
+
         final answer = await _pc!.createAnswer();
         await _pc!.setLocalDescription(answer);
+        debugPrint('[WebRTC] local description set, sending answer (ws connected: ${WebSocketService.instance.isConnected})');
         WebSocketService.instance.send({
           'type': 'webrtc_answer',
           'payload': {'call_id': _callId, 'sdp': answer.sdp},
         });
+        debugPrint('[WebRTC] answer sent');
+
+        // Answer is out — now it's safe to release our queued candidates.
+        _answerSent = true;
+        for (final c in _pendingLocalCandidates) {
+          _sendLocalCandidate(c);
+        }
+        _pendingLocalCandidates.clear();
         break;
 
       case WsMessageType.webrtcIce:
-        await _pc!.addCandidate(RTCIceCandidate(
+        final cand = RTCIceCandidate(
           message.payload['candidate'] as String?,
           message.payload['sdpMid'] as String?,
           message.payload['sdpMLineIndex'] as int?,
-        ));
+        );
+        if (!_remoteDescSet) {
+          _pendingRemoteCandidates.add(cand);
+        } else {
+          await _pc!.addCandidate(cand);
+        }
         break;
 
       default:
@@ -236,6 +307,10 @@ class CameraNotifier extends StateNotifier<CameraModel> {
     await _pc?.close();
     _pc = null;
     _callId = null;
+    _answerSent = false;
+    _remoteDescSet = false;
+    _pendingLocalCandidates.clear();
+    _pendingRemoteCandidates.clear();
     _remoteVideoTrack = null;
     remoteRenderer.srcObject = null;
     state = state.copyWith(

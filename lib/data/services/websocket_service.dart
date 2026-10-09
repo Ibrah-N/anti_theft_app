@@ -2,6 +2,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../core/constants/app_constants.dart';
 import 'auth_service.dart';
@@ -57,7 +58,11 @@ class WebSocketService {
   /// (answer + ICE candidates). Everything else on this socket has been
   /// one-directional (server → app) until now.
   void send(Map<String, dynamic> message) {
-    _channel?.sink.add(jsonEncode(message));
+    if (_channel == null) {
+      debugPrint('[WebRTC] WS send DROPPED (socket is null): ${message['type']}');
+      return;
+    }
+    _channel!.sink.add(jsonEncode(message));
   }
 
   // ── Connect ───────────────────────────────────────────────────────────────
@@ -68,9 +73,14 @@ class WebSocketService {
     if (token == null) throw Exception('No access token found');
 
     final uri = Uri.parse('${AppConstants.wsUrl}?token=$token');
-    _channel = WebSocketChannel.connect(uri);
+    final channel = WebSocketChannel.connect(uri);
+    _channel = channel;
 
-    _channel!.stream.listen(
+    // IMPORTANT: each callback only clears _channel if it is STILL this same
+    // channel. Without this check, the old socket's "done" event (which fires
+    // late, after we reconnect) wiped out the brand-new socket, so send()
+    // silently dropped every WebRTC answer and ICE candidate.
+    channel.stream.listen(
       (data) {
         try {
           final json    = jsonDecode(data as String);
@@ -80,8 +90,14 @@ class WebSocketService {
           // ignore malformed messages
         }
       },
-      onDone:  () => _channel = null,
-      onError: (_) => _channel = null,
+      onDone: () {
+        debugPrint('[WebRTC] WS closed by server/network');
+        if (identical(_channel, channel)) _channel = null;
+      },
+      onError: (e) {
+        debugPrint('[WebRTC] WS error: $e');
+        if (identical(_channel, channel)) _channel = null;
+      },
     );
 
     return _controller.stream;
@@ -95,7 +111,8 @@ class WebSocketService {
   }
 
   Future<void> _closeChannel() async {
-    await _channel?.sink.close();
+    final old = _channel;
     _channel = null;
+    await old?.sink.close();
   }
 }

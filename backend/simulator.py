@@ -286,6 +286,8 @@ _pc: RTCPeerConnection | None = None
 _current_call_id: str | None = None
 _stop_handle = None  # camera_loop.call_later() handle, for the auto-timeout
 _video_track = None  # explicit reference so we can release the webcam cleanly
+_remote_desc_set = False   # True once the app's answer has been applied
+_pending_ice: list = []    # app candidates that arrived before the answer
 
 class TestPatternTrack(VideoStreamTrack):
     """
@@ -413,11 +415,14 @@ def _turn_ice_config() -> RTCConfiguration:
 
 async def _camera_start(call_id: str):
     global _pc, _current_call_id, _stop_handle, _video_track
+    global _remote_desc_set, _pending_ice
 
     if _pc is not None:
         logger.info("Replacing existing camera session with new one")
         await _camera_stop()
 
+    _remote_desc_set = False
+    _pending_ice = []
     _current_call_id = call_id
     _pc = RTCPeerConnection(configuration=_turn_ice_config())
     _video_track = _make_video_track()
@@ -461,13 +466,26 @@ async def _camera_answer(sdp: str, call_id: str):
     if _pc is None or call_id != _current_call_id:
         logger.warning(f"Ignoring WebRTC answer for unknown/stale call_id={call_id}")
         return
+    global _remote_desc_set
     await _pc.setRemoteDescription(RTCSessionDescription(sdp=sdp, type="answer"))
+    _remote_desc_set = True
     logger.info("📷 Remote description set — connecting...")
+    # Apply any app candidates that arrived before the answer did.
+    queued, _pending_ice[:] = list(_pending_ice), []
+    for data in queued:
+        await _add_remote_candidate(data)
 
 
 async def _camera_ice(data: dict, call_id: str):
     if _pc is None or call_id != _current_call_id:
         return
+    if not _remote_desc_set:
+        _pending_ice.append(data)   # hold until the answer has been applied
+        return
+    await _add_remote_candidate(data)
+
+
+async def _add_remote_candidate(data: dict):
     candidate_str = data.get("candidate")
     if not candidate_str:
         return

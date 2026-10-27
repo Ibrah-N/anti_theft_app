@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     MEDIA_MAX_SNAPSHOT_BYTES:  int = 5 * 1024 * 1024     # 5 MB
     MEDIA_MAX_RECORDING_BYTES: int = 200 * 1024 * 1024   # matches the 5-min session cap
 
+    # Event clips uploaded by the camera in numbered segments
+    CLIP_MAX_SECONDS:          int = 300                 # 5 minutes, same as the firmware cap
+    CLIP_MAX_SEGMENTS:         int = 40                  # sanity limit on pieces per clip
+    CLIP_MAX_SEGMENT_BYTES:    int = 30 * 1024 * 1024    # 30 MB per piece
+    CLIP_STALE_HOURS:          int = 24                  # abandoned partial uploads are deleted after this
+
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=True,

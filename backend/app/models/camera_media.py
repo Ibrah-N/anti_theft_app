@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 import enum
 
-from sqlalchemy import String, BigInteger, Float, Integer, ForeignKey, DateTime, Enum
+from sqlalchemy import String, BigInteger, Float, Integer, ForeignKey, DateTime, Enum, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -14,8 +14,19 @@ class CameraMediaType(str, enum.Enum):
     recording = "recording"
 
 
+class CameraMediaSource(str, enum.Enum):
+    manual = "manual"   # user tapped Snapshot / Record in the app
+    event  = "event"    # camera recorded it by itself after a suspicious event
+
+
 class CameraMedia(Base):
     __tablename__ = "camera_media"
+    __table_args__ = (
+        # A camera retrying an upload must never create a second gallery row
+        # for the same clip. NULL client_clip_id (all manual uploads) is
+        # allowed many times.
+        UniqueConstraint("vehicle_id", "client_clip_id", name="uq_camera_media_vehicle_clip"),
+    )
 
     id:               Mapped[int]  = mapped_column(primary_key=True, index=True)
     vehicle_id:       Mapped[int]  = mapped_column(ForeignKey("vehicles.id"), nullable=False, index=True)
@@ -34,6 +45,17 @@ class CameraMedia(Base):
 
     # Only set for recordings — null for snapshots.
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+    # Who made it. Existing rows are all "manual" (see the migration default).
+    source:           Mapped[CameraMediaSource] = mapped_column(
+        Enum(CameraMediaSource), nullable=False, default=CameraMediaSource.manual,
+    )
+    # Why the camera recorded ("door_opened", "motion", ...). Event clips only.
+    trigger_reason:   Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Camera-generated unique ID for the clip, used to make retries idempotent.
+    client_clip_id:   Mapped[str | None] = mapped_column(String(64), nullable=True)
+
 
     created_at:       Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

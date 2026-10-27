@@ -5,5 +5,11 @@ from app.models.vehicle import Vehicle
 from app.models.alert import Alert
 from app.models.gps_reading import GPSReading
 from app.models.device_token import DeviceToken
+from app.models.camera_media import CameraMedia, CameraMediaType, CameraMediaSource
+from app.models.clip_upload import ClipUpload, ClipUploadStatus
 
-__all__ = ["User", "Vehicle", "Alert", "GPSReading", "DeviceToken"]
+__all__ = [
+    "User", "Vehicle", "Alert", "GPSReading", "DeviceToken",
+    "CameraMedia", "CameraMediaType", "CameraMediaSource",
+    "ClipUpload", "ClipUploadStatus",
+]

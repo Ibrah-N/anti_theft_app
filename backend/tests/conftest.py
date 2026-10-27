@@ -11,7 +11,7 @@ test_engine = create_engine(TEST_DATABASE_URL)
 TestSessionLocal = sessionmaker(bind=test_engine, autocommit=False, autoflush=False)
 
 from app.core.database import Base, get_db
-from app.models import User, Vehicle, Alert, GPSReading  # noqa: F401 ← added GPSReading
+from app.models import User, Vehicle, Alert, GPSReading, DeviceToken, CameraMedia, ClipUpload  # noqa: F401
 
 Base.metadata.drop_all(bind=test_engine)
 Base.metadata.create_all(bind=test_engine)

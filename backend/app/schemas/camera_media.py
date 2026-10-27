@@ -3,7 +3,7 @@
 from datetime import datetime
 from pydantic import BaseModel
 
-from app.models.camera_media import CameraMediaType
+from app.models.camera_media import CameraMediaType, CameraMediaSource
 
 
 class CameraMediaResponse(BaseModel):
@@ -13,6 +13,8 @@ class CameraMediaResponse(BaseModel):
     file_size_bytes:  int
     duration_seconds: float | None
     created_at:       datetime
+    source:           CameraMediaSource = CameraMediaSource.manual
+    trigger_reason:   str | None = None
 
     model_config = {"from_attributes": True}
 

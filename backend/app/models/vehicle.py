@@ -11,6 +11,11 @@ class Vehicle(Base):
     name:         Mapped[str]   = mapped_column(String(100), nullable=False)
     reg_number:   Mapped[str]   = mapped_column(String(50), unique=True, nullable=False)
     device_id:    Mapped[str]   = mapped_column(String(100), unique=True, nullable=False)
+    # Secret the camera/firmware presents when uploading clips. Only a SHA-256
+    # hash is stored; the plain key is shown to the owner exactly once when it
+    # is created or rotated. NULL = this vehicle's device cannot upload yet.
+    device_key_hash:       Mapped[str | None]      = mapped_column(String(64), nullable=True)
+    device_key_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Live state — updated by MQTT in Step 3
     engine_on:    Mapped[bool]  = mapped_column(Boolean, default=False)

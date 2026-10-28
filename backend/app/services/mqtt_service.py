@@ -65,6 +65,9 @@ def topic_webrtc_offer(device_id: str) -> str:
 def topic_webrtc_ice(device_id: str) -> str:
     return f"sg/{device_id}/webrtc/ice"
 
+def topic_camera_state(device_id: str) -> str:
+    return f"sg/{device_id}/camera/state"
+
 
 # ── MQTT Service ───────────────────────────────────────────────────────────────
 class MQTTService:
@@ -121,9 +124,10 @@ class MQTTService:
             client.subscribe("sg/+/ack",     qos=1)
             client.subscribe("sg/+/webrtc/offer", qos=1)
             client.subscribe("sg/+/webrtc/ice",   qos=1)
+            client.subscribe("sg/+/camera/state", qos=1)
             logger.info(
                 "Subscribed to sg/+/sensors, sg/+/gps, sg/+/status, sg/+/ack, "
-                "sg/+/webrtc/offer, sg/+/webrtc/ice"
+                "sg/+/webrtc/offer, sg/+/webrtc/ice, sg/+/camera/state"
             )
         else:
             logger.error(f"❌ MQTT connection failed: {reason_code}")
@@ -164,6 +168,8 @@ class MQTTService:
             self._handle_webrtc_offer(device_id, data)
         elif topic.endswith("/webrtc/ice"):
             self._handle_webrtc_ice(device_id, data)
+        elif topic.endswith("/camera/state"):
+            self._handle_camera_state(device_id, data)
 
     # ── Message handlers ───────────────────────────────────────────────────────
     def _handle_sensors(self, device_id: str, data: dict):
@@ -195,6 +201,16 @@ class MQTTService:
         """Device's ICE candidate — {"candidate", "sdpMid", "sdpMLineIndex", "call_id"}."""
         if self._db_callback:
             self._db_callback("webrtc_ice", device_id, data)
+
+    def _handle_camera_state(self, device_id: str, data: dict):
+        """
+        Camera reports what it is doing —
+        {"state": "idle|recording|uploading|streaming", "clip_id", "reason",
+         "elapsed_s", "segments_uploaded", "segments_total"}.
+        """
+        if self._db_callback:
+            self._db_callback("camera_state", device_id, data)
+
 
     # ── Publish commands ───────────────────────────────────────────────────────
     def publish_engine_command(self, device_id: str, state: bool):
@@ -238,8 +254,17 @@ class MQTTService:
         )
         logger.info(f"Published mirror_{position} command → {device_id}: {state}")
 
-    def publish_start_command(self, device_id: str, state: bool):
-        payload = json.dumps({"state": state, "ts": self._ts()})
+        def publish_camera_start_command(self, device_id: str, call_id: str,
+                                     finalize_recording: bool = True):
+        # finalize_recording=True tells the camera: if you are recording an
+        # event clip right now, close that file safely, start the live stream
+        # FIRST, and upload the finished clip afterwards (stream-first).
+        # Older firmware simply ignores the extra field.
+        payload = json.dumps({
+            "call_id": call_id,
+            "finalize_recording": finalize_recording,
+            "ts": self._ts(),
+        })
         self.client.publish(
             topic_cmd_start(device_id),
             payload,

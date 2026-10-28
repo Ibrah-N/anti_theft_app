@@ -8,6 +8,7 @@ from datetime import datetime, timezone, timedelta
 
 from app.core.database import SessionLocal
 from app.models.camera_media import CameraMedia
+from app.services.clip_storage import sweep_stale_clip_uploads
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ def _cleanup_loop():
     # the server was down), then on a steady interval from then on.
     while True:
         delete_expired_media()
+        sweep_stale_clip_uploads()
         time.sleep(CLEANUP_INTERVAL_SECONDS)
 
 
@@ -62,3 +64,5 @@ def start_cleanup_thread():
         f"Media cleanup thread started — retention={MEDIA_RETENTION_DAYS}d, "
         f"interval={CLEANUP_INTERVAL_SECONDS}s"
     )
+
+

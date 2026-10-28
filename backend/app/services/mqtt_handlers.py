@@ -11,6 +11,7 @@ from app.models.gps_reading import GPSReading
 import asyncio
 from app.services.websocket_service import ws_manager
 from app.services import webrtc_signaling
+from app.services import camera_state
 
 from firebase_admin import messaging
 from app.models.device_token import DeviceToken
@@ -102,8 +103,10 @@ def handle_mqtt_message(msg_type: str, device_id: str, data: dict):
             _handle_ack(db, vehicle, data)
         elif msg_type == "webrtc_offer":
             _handle_webrtc_offer(db, vehicle, data)
-        elif msg_type == "webrtc_ice":
+                elif msg_type == "webrtc_ice":
             _handle_webrtc_ice(db, vehicle, data)
+        elif msg_type == "camera_state":
+            _handle_camera_state(db, vehicle, data)
 
         db.commit()
 
@@ -382,6 +385,51 @@ async def _broadcast_webrtc_signal(vehicle, msg_type: str, payload: dict):
     })
 
 
+# ── Camera state (device → app) ───────────────────────────────────────────────
+def _handle_camera_state(db, vehicle, data: dict):
+    """
+    Expected payload: {"state": "idle|recording|uploading|streaming", "clip_id",
+    "reason", "elapsed_s", "segments_uploaded", "segments_total"}.
+    Remembered in memory and forwarded to the app so it can show
+    "recording event clip…" / "uploading…". Not gated on is_armed: the camera
+    may well be recording while the app is looking at it.
+    """
+    clean = camera_state.set_state(vehicle.id, data)
+    if clean is None:
+        logger.warning(f"Vehicle {vehicle.id} — ignoring invalid camera state: {data.get('state')!r}")
+        return
+    logger.info(f"Camera state — vehicle {vehicle.id}: {clean['state']} clip={clean['clip_id']}")
+    _broadcast_threadsafe(_broadcast_event(vehicle.id, "camera_state", clean))
+
+
+async def _broadcast_event(vehicle_id: int, msg_type: str, payload: dict):
+    await ws_manager.broadcast(vehicle_id, {"type": msg_type, "payload": payload})
+
+
+def notify_clip_ready(vehicle_id: int, payload: dict):
+    """
+    Called (from a background thread) after an event clip has been joined and
+    saved to the gallery. Tells any open app to refresh its gallery, and sends
+    a push so the owner finds out even with the app closed.
+    Opens its own DB session — the request that triggered it is already over.
+    """
+    _broadcast_threadsafe(_broadcast_event(vehicle_id, "clip_ready", payload))
+
+    db = SessionLocal()
+    try:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if vehicle is None:
+            return
+        reason = payload.get("trigger_reason")
+        body = (f"Recording after: {reason.replace('_', ' ')}" if reason
+                else "A new event video was saved to your gallery")
+        _send_push_notification(db, vehicle, "Event video ready", body)
+    except Exception as e:
+        logger.error(f"clip_ready push failed: {e}")
+    finally:
+        db.close()
+
+        
 async def _broadcast_alert(vehicle, alert):
     created_at = alert.created_at or datetime.now(timezone.utc)
     await ws_manager.broadcast(vehicle.id, {

@@ -8,7 +8,7 @@ from app.core.database import engine, Base
 from app.models import User, Vehicle, Alert
 
 # Import routers
-from app.routes import auth, vehicle, alerts, gps, ws
+from app.routes import auth, vehicle, alerts, gps, ws, device
 from app.services.mqtt_service import mqtt_service
 from app.services.mqtt_handlers import handle_mqtt_message
 from app.services.media_cleanup import start_cleanup_thread
@@ -55,6 +55,7 @@ app.include_router(auth.router,    prefix="/api/auth",    tags=["Auth"])
 app.include_router(vehicle.router, prefix="/api/vehicle", tags=["Vehicle"])
 app.include_router(alerts.router,  prefix="/api/alerts",  tags=["Alerts"])
 app.include_router(gps.router,    prefix="/api/gps",     tags=["GPS"])
+app.include_router(device.router, prefix="/api/device",  tags=["Device"])
 app.include_router(ws.router, tags=["WebSocket"])
 
 
@@ -96,3 +97,9 @@ def health():
         "app":            settings.APP_NAME,
         "mqtt_connected": mqtt_service.is_connected,
     }
+
+
+
+
+#    sudo apt install -y ffmpeg
+#    client_max_body_size 32m;

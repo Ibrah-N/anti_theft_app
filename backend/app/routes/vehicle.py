@@ -250,6 +250,19 @@ def start_camera(
     }
 
 
+@router.get("/camera/state", response_model=dict)
+def get_camera_state(
+    vehicle: Vehicle = Depends(get_current_vehicle),
+):
+    """
+    What the camera last reported: idle / recording / uploading / streaming
+    (plus clip_id, reason, progress). `camera` is null if the camera has not
+    reported since the server started. Live changes also arrive over the
+    WebSocket as {"type": "camera_state"}.
+    """
+    return {"camera": camera_state.get_state(vehicle.id)}
+
+    
 @router.get("/camera/ice-servers", response_model=dict)
 def get_ice_servers(
     vehicle: Vehicle = Depends(get_current_vehicle),

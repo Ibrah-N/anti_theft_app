@@ -3,6 +3,7 @@
 # Simulates ESP32 publishing sensor, GPS, and status data to Mosquitto broker
 
 import ssl
+import sys
 import json
 import time
 import random
@@ -94,6 +95,15 @@ TOPIC_ACK     = f"sg/{DEVICE_ID}/ack"
 TOPIC_WEBRTC_OFFER = f"sg/{DEVICE_ID}/webrtc/offer"
 TOPIC_WEBRTC_ICE   = f"sg/{DEVICE_ID}/webrtc/ice"
 
+TOPIC_CAMERA_STATE = f"sg/{DEVICE_ID}/camera/state"
+
+# ── Event recording (see event_recorder.py) ──────────────────────────────────
+# BACKEND_URL / DEVICE_KEY: where and how the "camera" uploads event clips.
+# EVENT_AUTO_TRIGGER=true: every simulated zone-open also starts an event clip.
+BACKEND_URL        = os.getenv("BACKEND_URL")        # e.g. https://vigilx.duckdns.org
+DEVICE_KEY         = os.getenv("DEVICE_KEY")         # vgx_... from POST /api/device/key
+EVENT_AUTO_TRIGGER = os.getenv("EVENT_AUTO_TRIGGER", "false").lower() in ("1", "true", "yes")
+
 # ── GPS coordinates (Bara, KPK) ───────────────────────────────────────────────
 BASE_LAT = 33.901206
 BASE_LNG = 71.387076
@@ -124,6 +134,14 @@ client.tls_set(
 )
 
 
+# ── Event recorder ────────────────────────────────────────────────────────────
+from event_recorder import EventRecorder
+
+def publish_camera_state(state: dict):
+    client.publish(TOPIC_CAMERA_STATE, json.dumps(state), qos=1)
+
+recorder = EventRecorder(DEVICE_ID, publish_camera_state, BACKEND_URL, DEVICE_KEY)
+
 # ── Callbacks ─────────────────────────────────────────────────────────────────
 def on_connect(client, userdata, flags, reason_code, properties):
     if reason_code == 0:
@@ -141,6 +159,8 @@ def on_connect(client, userdata, flags, reason_code, properties):
         client.subscribe(f"sg/{DEVICE_ID}/cmd/webrtc/answer", qos=1)
         client.subscribe(f"sg/{DEVICE_ID}/cmd/webrtc/ice",    qos=1)
         logger.info(f"Subscribed to command topics for device {DEVICE_ID}")
+
+        recorder.start()
     else:
         logger.error(f"❌ Connection failed: {reason_code}")
 
@@ -227,8 +247,9 @@ def on_message(client, userdata, message):
     # callback itself is synchronous and can't await anything directly.
     elif topic.endswith("/cmd/camera/start"):
         call_id = payload.get("call_id")
-        logger.info(f"📷 Camera start requested — call_id={call_id}")
-        asyncio.run_coroutine_threadsafe(_camera_start(call_id), camera_loop)
+        finalize = payload.get("finalize_recording", True)
+        logger.info(f"📷 Camera start requested — call_id={call_id} finalize_recording={finalize}")
+        asyncio.run_coroutine_threadsafe(_camera_start(call_id, finalize), camera_loop)
 
     elif topic.endswith("/cmd/camera/stop"):
         logger.info("📷 Camera stop requested")
@@ -413,13 +434,16 @@ def _turn_ice_config() -> RTCConfiguration:
     ])
 
 
-async def _camera_start(call_id: str):
+async def _camera_start(call_id: str, finalize_recording: bool = True):
     global _pc, _current_call_id, _stop_handle, _video_track
-    global _remote_desc_set, _pending_ice
 
     if _pc is not None:
         logger.info("Replacing existing camera session with new one")
         await _camera_stop()
+
+    # Stream-first: close any event clip being recorded (it uploads AFTER the
+    # stream ends). Runs in a worker thread so it can't block the video loop.
+    await asyncio.to_thread(recorder.on_stream_started, finalize_recording)
 
     _remote_desc_set = False
     _pending_ice = []
@@ -518,6 +542,7 @@ async def _camera_stop():
     if pc:
         await pc.close()
     logger.info(f"📷 WebRTC session ended — call_id={call_id}")
+    recorder.on_stream_ended()      # stream is over — waiting event clips may now upload
 
 
 # ── Wire callbacks ────────────────────────────────────────────────────────────
@@ -568,7 +593,18 @@ def run():
     client.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
     client.loop_start()
 
-    time.sleep(2)  # wait for connection
+        time.sleep(2)  # wait for connection
+
+    # Manual trigger from the terminal: type  e  (or  e door_opened ) + Enter.
+    def _stdin_listener():
+         for line in sys.stdin:
+            parts = line.strip().split(maxsplit=1)
+            if parts and parts[0] in ("e", "event"):
+                reason = parts[1].replace(" ", "_") if len(parts) > 1 else "manual_test"
+                if recorder.trigger(reason):
+                    logger.info(f"🎬 Event triggered from terminal: {reason}")
+    threading.Thread(target=_stdin_listener, daemon=True, name="stdin-events").start()
+    logger.info("Type 'e' + Enter to trigger an event recording")
 
     step = 0
     logger.info("Publishing data every 5 seconds — press Ctrl+C to stop")
@@ -614,11 +650,16 @@ def run():
                 client.publish(TOPIC_SENSORS, json.dumps(sensor_payload), qos=1)
                 logger.info(f"📡 SENSORS → {sensor_payload}")
 
+                # A zone opening is a "suspicious event" → start an event clip.
+                if EVENT_AUTO_TRIGGER and open_zone:
+                    recorder.trigger(f"{open_zone}_opened")
+
             step += 1
             time.sleep(5)
 
         except KeyboardInterrupt:
             logger.info("Simulator stopped by user")
+            recorder.close()
             break
 
     client.loop_stop()

@@ -254,17 +254,8 @@ class MQTTService:
         )
         logger.info(f"Published mirror_{position} command → {device_id}: {state}")
 
-        def publish_camera_start_command(self, device_id: str, call_id: str,
-                                     finalize_recording: bool = True):
-        # finalize_recording=True tells the camera: if you are recording an
-        # event clip right now, close that file safely, start the live stream
-        # FIRST, and upload the finished clip afterwards (stream-first).
-        # Older firmware simply ignores the extra field.
-        payload = json.dumps({
-            "call_id": call_id,
-            "finalize_recording": finalize_recording,
-            "ts": self._ts(),
-        })
+    def publish_start_command(self, device_id: str, state: bool):
+        payload = json.dumps({"state": state, "ts": self._ts()})
         self.client.publish(
             topic_cmd_start(device_id),
             payload,
@@ -293,8 +284,17 @@ class MQTTService:
         )
         logger.info(f"Published arm command → {device_id}: {state}")
 
-    def publish_camera_start_command(self, device_id: str, call_id: str):
-        payload = json.dumps({"call_id": call_id, "ts": self._ts()})
+    def publish_camera_start_command(self, device_id: str, call_id: str,
+                                     finalize_recording: bool = True):
+        # finalize_recording=True tells the camera: if you are recording an
+        # event clip right now, close that file safely, start the live stream
+        # FIRST, and upload the finished clip afterwards (stream-first).
+        # Older firmware simply ignores the extra field.
+        payload = json.dumps({
+            "call_id": call_id,
+            "finalize_recording": finalize_recording,
+            "ts": self._ts(),
+        })
         self.client.publish(
             topic_cmd_camera_start(device_id),
             payload,

@@ -103,7 +103,7 @@ def handle_mqtt_message(msg_type: str, device_id: str, data: dict):
             _handle_ack(db, vehicle, data)
         elif msg_type == "webrtc_offer":
             _handle_webrtc_offer(db, vehicle, data)
-                elif msg_type == "webrtc_ice":
+        elif msg_type == "webrtc_ice":
             _handle_webrtc_ice(db, vehicle, data)
         elif msg_type == "camera_state":
             _handle_camera_state(db, vehicle, data)

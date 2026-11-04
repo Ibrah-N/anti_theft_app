@@ -17,6 +17,11 @@ from app.models import User, Vehicle, Alert, GPSReading, DeviceToken, CameraMedi
 # access to the values within the .ini file in use.
 config = context.config
 
+# Use DATABASE_URL from backend/.env so the DB password lives in one place
+# (alembic.ini's sqlalchemy.url is only a fallback).
+from app.core.config import settings
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("%", "%%"))
+
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:

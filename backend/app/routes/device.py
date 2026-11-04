@@ -223,7 +223,7 @@ def finish_clip(
     clip_id: ClipId,
     payload: ClipFinishRequest,
     background: BackgroundTasks,
-    vehicle: Vehicle = Depends(get_device_vehicle),,
+    vehicle: Vehicle = Depends(get_device_vehicle),
     db: Session = Depends(get_db),
 ):
     upload = _get_upload(db, vehicle, clip_id, lock=True)

@@ -11,6 +11,7 @@ import '../services/websocket_service.dart';
 import '../models/alert_model.dart';
 import '../services/notification_service.dart';
 import 'alerts_provider.dart';
+import 'camera_event_provider.dart';
 
 
 // ── Pending commands ───────────────────────────────────────────────────────────
@@ -68,6 +69,9 @@ class VehicleNotifier extends StateNotifier<AsyncValue<VehicleModel>> {
       // 2. Subscribe to WebSocket for live updates
       final stream  = await WebSocketService.instance.connect();
       stream.listen(_onWsMessage);
+      // 3. Start listening for camera event/clip messages app-wide, so the
+      //    gallery refreshes even when the camera tab isn't open.
+      ref.read(cameraEventProvider);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
@@ -100,6 +104,10 @@ class VehicleNotifier extends StateNotifier<AsyncValue<VehicleModel>> {
       case WsMessageType.webrtcIce:
       // Handled by cameraProvider's own listener on this same broadcast
       // stream — nothing for vehicleProvider to do with these.
+      break;
+      case WsMessageType.cameraState:
+      case WsMessageType.clipReady:
+      // Handled by cameraEventProvider's own listener on this same stream.
       break;
       case WsMessageType.unknown:
       break;

@@ -190,6 +190,12 @@ class ApiService {
     return List<Map<String, dynamic>>.from(response.data['items'] as List);
   }
 
+  /// What the camera last reported: {"camera": {state, clip_id, reason, ...}} or {"camera": null}.
+  Future<Map<String, dynamic>> getCameraState() async {
+    final response = await _dio.get('/vehicle/camera/state');
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
   Future<void> deleteCameraMedia(int id) async {
     await _dio.delete('/vehicle/camera/media/$id');
   }

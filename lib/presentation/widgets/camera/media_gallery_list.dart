@@ -43,7 +43,7 @@ class MediaGalleryList extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Snapshots and recordings are automatically deleted after 30 days.',
+                  'Snapshots, recordings and event videos are automatically deleted after 30 days.',
                   style: const TextStyle(color: AppColors.textMuted, fontSize: 11.5),
                 ),
               ),
@@ -117,12 +117,14 @@ class _MediaTile extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: AppColors.iconBlueBg,
+              color: media.isEvent ? AppColors.statusAmberBg : AppColors.iconBlueBg,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
-              isVideo ? Icons.videocam_rounded : Icons.photo_camera_rounded,
-              color: AppColors.accentBlue,
+              media.isEvent
+                  ? Icons.warning_amber_rounded
+                  : isVideo ? Icons.videocam_rounded : Icons.photo_camera_rounded,
+              color: media.isEvent ? AppColors.statusAmber : AppColors.accentBlue,
               size: 20,
             ),
           ),
@@ -139,6 +141,27 @@ class _MediaTile extends StatelessWidget {
                   isVideo ? '${media.durationLabel} · ${media.fileSizeLabel}' : media.fileSizeLabel,
                   style: const TextStyle(color: AppColors.textMuted, fontSize: 11.5),
                 ),
+                if (media.isEvent) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.statusAmberBg,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.statusAmber.withValues(alpha: 0.4)),
+                    ),
+                    child: Text(
+                      media.triggerReasonLabel == null
+                          ? 'EVENT'
+                          : 'EVENT · ${media.triggerReasonLabel}',
+                      style: const TextStyle(
+                          color: AppColors.statusAmber,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.6),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

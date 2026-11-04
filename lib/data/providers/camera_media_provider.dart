@@ -20,6 +20,18 @@ class CameraMediaNotifier extends StateNotifier<AsyncValue<List<CameraMediaModel
     }
   }
 
+  /// Reload quietly: keeps the current list on screen (no spinner), and keeps
+  /// it if the refresh fails. Used when the server says a new clip is ready.
+  Future<void> refresh() async {
+    try {
+      final raw = await ApiService.instance.listCameraMedia();
+      state = AsyncValue.data(raw.map(CameraMediaModel.fromJson).toList());
+    } catch (_) {
+      // keep whatever we already show
+    }
+  }
+
+
   Future<void> delete(int id) async {
     final current = state.valueOrNull;
     if (current == null) return;

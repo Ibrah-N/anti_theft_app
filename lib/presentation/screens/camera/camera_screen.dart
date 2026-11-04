@@ -8,10 +8,12 @@ import '../../../data/models/camera_model.dart';
 import '../../../data/models/camera_media_model.dart';
 import '../../../data/providers/camera_provider.dart';
 import '../../../data/providers/camera_media_provider.dart';
+import '../../../data/providers/camera_event_provider.dart';
 import '../../../data/services/api_service.dart';
 import '../../widgets/camera/stream_viewer.dart';
 import '../../widgets/camera/camera_control_row.dart';
 import '../../widgets/camera/device_info_card.dart';
+import '../../widgets/camera/event_status_banner.dart';
 import '../../widgets/camera/media_gallery_list.dart';
 import 'fullscreen_camera_screen.dart';
 import 'media_viewer_screen.dart';
@@ -136,6 +138,15 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
     final camera = ref.watch(cameraProvider);
     final renderer = ref.watch(cameraProvider.notifier).remoteRenderer;
     final mediaState = ref.watch(cameraMediaProvider);
+    final eventState = ref.watch(cameraEventProvider);
+
+    // A finished event clip just landed in the gallery — tell the user once.
+    ref.listen<CameraEventState>(cameraEventProvider, (prev, next) {
+      if (prev != null && next.clipReadyCount > prev.clipReadyCount && mounted) {
+        _showSnack('Event video saved to your gallery');
+      }
+    });
+
     final bool isStreaming  = camera.status == CameraStatus.streaming;
     final bool isConnecting = camera.status == CameraStatus.connecting;
 
@@ -146,6 +157,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildHeader(camera),
+            EventStatusBanner(event: eventState),
             const SizedBox(height: 20),
             StreamViewer(
               status: camera.status,

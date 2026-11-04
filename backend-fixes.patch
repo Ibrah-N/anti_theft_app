@@ -1,0 +1,99 @@
+diff --git a/backend/alembic/env.py b/backend/alembic/env.py
+index 7fd59ea..015a106 100644
+--- a/backend/alembic/env.py
++++ b/backend/alembic/env.py
+@@ -17,6 +17,11 @@ from app.models import User, Vehicle, Alert, GPSReading, DeviceToken, CameraMedi
+ # access to the values within the .ini file in use.
+ config = context.config
+ 
++# Use DATABASE_URL from backend/.env so the DB password lives in one place
++# (alembic.ini's sqlalchemy.url is only a fallback).
++from app.core.config import settings
++config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("%", "%%"))
++
+ # Interpret the config file for Python logging.
+ # This line sets up loggers basically.
+ if config.config_file_name is not None:
+diff --git a/backend/app/routes/device.py b/backend/app/routes/device.py
+index 550fe15..ffb4653 100644
+--- a/backend/app/routes/device.py
++++ b/backend/app/routes/device.py
+@@ -223,7 +223,7 @@ def finish_clip(
+     clip_id: ClipId,
+     payload: ClipFinishRequest,
+     background: BackgroundTasks,
+-    vehicle: Vehicle = Depends(get_device_vehicle),,
++    vehicle: Vehicle = Depends(get_device_vehicle),
+     db: Session = Depends(get_db),
+ ):
+     upload = _get_upload(db, vehicle, clip_id, lock=True)
+diff --git a/backend/app/services/mqtt_handlers.py b/backend/app/services/mqtt_handlers.py
+index bcaf6cf..c23cb74 100644
+--- a/backend/app/services/mqtt_handlers.py
++++ b/backend/app/services/mqtt_handlers.py
+@@ -103,7 +103,7 @@ def handle_mqtt_message(msg_type: str, device_id: str, data: dict):
+             _handle_ack(db, vehicle, data)
+         elif msg_type == "webrtc_offer":
+             _handle_webrtc_offer(db, vehicle, data)
+-                elif msg_type == "webrtc_ice":
++        elif msg_type == "webrtc_ice":
+             _handle_webrtc_ice(db, vehicle, data)
+         elif msg_type == "camera_state":
+             _handle_camera_state(db, vehicle, data)
+diff --git a/backend/app/services/mqtt_service.py b/backend/app/services/mqtt_service.py
+index 32624cb..f528b4d 100644
+--- a/backend/app/services/mqtt_service.py
++++ b/backend/app/services/mqtt_service.py
+@@ -254,17 +254,8 @@ class MQTTService:
+         )
+         logger.info(f"Published mirror_{position} command → {device_id}: {state}")
+ 
+-        def publish_camera_start_command(self, device_id: str, call_id: str,
+-                                     finalize_recording: bool = True):
+-        # finalize_recording=True tells the camera: if you are recording an
+-        # event clip right now, close that file safely, start the live stream
+-        # FIRST, and upload the finished clip afterwards (stream-first).
+-        # Older firmware simply ignores the extra field.
+-        payload = json.dumps({
+-            "call_id": call_id,
+-            "finalize_recording": finalize_recording,
+-            "ts": self._ts(),
+-        })
++    def publish_start_command(self, device_id: str, state: bool):
++        payload = json.dumps({"state": state, "ts": self._ts()})
+         self.client.publish(
+             topic_cmd_start(device_id),
+             payload,
+@@ -293,8 +284,17 @@ class MQTTService:
+         )
+         logger.info(f"Published arm command → {device_id}: {state}")
+ 
+-    def publish_camera_start_command(self, device_id: str, call_id: str):
+-        payload = json.dumps({"call_id": call_id, "ts": self._ts()})
++    def publish_camera_start_command(self, device_id: str, call_id: str,
++                                     finalize_recording: bool = True):
++        # finalize_recording=True tells the camera: if you are recording an
++        # event clip right now, close that file safely, start the live stream
++        # FIRST, and upload the finished clip afterwards (stream-first).
++        # Older firmware simply ignores the extra field.
++        payload = json.dumps({
++            "call_id": call_id,
++            "finalize_recording": finalize_recording,
++            "ts": self._ts(),
++        })
+         self.client.publish(
+             topic_cmd_camera_start(device_id),
+             payload,
+diff --git a/backend/requirements.txt b/backend/requirements.txt
+index 734779c..15296ec 100644
+--- a/backend/requirements.txt
++++ b/backend/requirements.txt
+@@ -9,7 +9,7 @@ python-dotenv==1.0.1
+ aiomqtt==2.3.0
+ websockets==13.0
+ pydantic-settings==2.4.0
+-httpx==0.27.2
++httpx==0.28.1
+ bcrypt==4.0.1
+ email-validator==2.2.0
+ paho-mqtt==2.1.0

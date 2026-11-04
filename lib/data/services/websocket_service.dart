@@ -8,7 +8,7 @@ import '../../core/constants/app_constants.dart';
 import 'auth_service.dart';
 
 // ── Message types from backend ─────────────────────────────────────────────
-enum WsMessageType { initialState, statusUpdate, sensorUpdate, alert, commandAck, webrtcOffer, webrtcIce, unknown }
+enum WsMessageType { initialState, statusUpdate, sensorUpdate, alert, commandAck, webrtcOffer, webrtcIce, cameraState, clipReady, unknown }
 
 class WsMessage {
   final WsMessageType type;
@@ -25,6 +25,8 @@ class WsMessage {
       'command_ack'    => WsMessageType.commandAck,
       'webrtc_offer'   => WsMessageType.webrtcOffer,
       'webrtc_ice'     => WsMessageType.webrtcIce,
+      'camera_state'   => WsMessageType.cameraState,
+      'clip_ready'     => WsMessageType.clipReady,
       _                => WsMessageType.unknown,
     };
 

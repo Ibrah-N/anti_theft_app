@@ -593,7 +593,7 @@ def run():
     client.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
     client.loop_start()
 
-        time.sleep(2)  # wait for connection
+    time.sleep(2)  # wait for connection
 
     # Manual trigger from the terminal: type  e  (or  e door_opened ) + Enter.
     def _stdin_listener():

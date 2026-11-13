@@ -1,3 +1,5 @@
+# Okay let's take a back step and then re-continue with a smaller resolution then the one we currently dealing with. 
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 

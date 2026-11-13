@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../core/constants/app_constants.dart';
 import 'auth_service.dart';
@@ -44,6 +45,13 @@ class WebSocketService {
 
   WebSocketChannel? _channel;
 
+  // Auto-reconnect: mobile networks silently kill idle sockets, and before
+  // this the socket was opened once at startup and never reopened, so the
+  // WebRTC offer was broadcast to a dead socket and the camera timed out.
+  bool _wantConnected = false;
+  Timer? _reconnectTimer;
+  int _reconnectAttempt = 0;
+
   // Persistent for the life of the app — created once, never replaced.
   // This is what fixes the "listener orphaned after reconnect" bug:
   // anything that subscribes to `messages` once (like cameraProvider) stays
@@ -69,13 +77,17 @@ class WebSocketService {
 
   // ── Connect ───────────────────────────────────────────────────────────────
   Future<Stream<WsMessage>> connect() async {
+    _wantConnected = true;
+    _reconnectTimer?.cancel();
     await _closeChannel(); // drop any existing socket, but keep _controller alive
 
     final token = await AuthService.instance.getAccessToken();
     if (token == null) throw Exception('No access token found');
 
     final uri = Uri.parse('${AppConstants.wsUrl}?token=$token');
-    final channel = WebSocketChannel.connect(uri);
+    // pingInterval keeps NAT/carrier mappings alive and detects a dead link
+    // within ~2 intervals instead of never.
+    final channel = IOWebSocketChannel.connect(uri, pingInterval: const Duration(seconds: 20));
     _channel = channel;
 
     // IMPORTANT: each callback only clears _channel if it is STILL this same
@@ -84,6 +96,7 @@ class WebSocketService {
     // silently dropped every WebRTC answer and ICE candidate.
     channel.stream.listen(
       (data) {
+        _reconnectAttempt = 0; // traffic is flowing: link is healthy
         try {
           final json    = jsonDecode(data as String);
           final message = WsMessage.fromJson(json);
@@ -94,11 +107,17 @@ class WebSocketService {
       },
       onDone: () {
         debugPrint('[WebRTC] WS closed by server/network');
-        if (identical(_channel, channel)) _channel = null;
+        if (identical(_channel, channel)) {
+          _channel = null;
+          _scheduleReconnect();
+        }
       },
       onError: (e) {
         debugPrint('[WebRTC] WS error: $e');
-        if (identical(_channel, channel)) _channel = null;
+        if (identical(_channel, channel)) {
+          _channel = null;
+          _scheduleReconnect();
+        }
       },
     );
 
@@ -109,7 +128,34 @@ class WebSocketService {
   // Only closes the socket itself — _controller stays alive for the app's
   // lifetime so existing listeners never get silently orphaned.
   Future<void> disconnect() async {
+    _wantConnected = false;
+    _reconnectTimer?.cancel();
     await _closeChannel();
+  }
+
+  /// Make sure a socket is open; call before anything that waits for a
+  /// server push (e.g. starting the camera, which waits for the offer).
+  Future<void> ensureConnected() async {
+    if (_channel == null) {
+      debugPrint('[WebRTC] WS not connected, reconnecting before use');
+      await connect();
+    }
+  }
+
+  void _scheduleReconnect() {
+    if (!_wantConnected) return;
+    _reconnectTimer?.cancel();
+    final delay = Duration(seconds: [1, 2, 5, 10, 30][_reconnectAttempt.clamp(0, 4)]);
+    _reconnectAttempt++;
+    debugPrint('[WebRTC] WS reconnecting in ${delay.inSeconds}s');
+    _reconnectTimer = Timer(delay, () async {
+      try {
+        await connect();
+      } catch (e) {
+        debugPrint('[WebRTC] WS reconnect failed: $e');
+        _scheduleReconnect();
+      }
+    });
   }
 
   Future<void> _closeChannel() async {

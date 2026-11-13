@@ -87,6 +87,7 @@ class CameraNotifier extends StateNotifier<CameraModel> {
     state = state.copyWith(status: CameraStatus.connecting, latency: '--');
 
     try {
+      await WebSocketService.instance.ensureConnected();
       final response = await ApiService.instance.startCamera();
       _callId = response['call_id'] as String;
       debugPrint('[WebRTC] camera/start OK, call_id=$_callId');

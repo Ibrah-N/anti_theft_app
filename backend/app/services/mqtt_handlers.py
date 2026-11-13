@@ -25,6 +25,9 @@ main_event_loop: asyncio.AbstractEventLoop | None = None
 def _broadcast_threadsafe(coro):
     """Schedule a broadcast coroutine on the main event loop from this MQTT thread."""
     if main_event_loop is None:
+        # The coroutine object already exists; close it so it is cleaned up
+        # instead of being garbage-collected with a "never awaited" warning.
+        coro.close()
         logger.error("main_event_loop not set — cannot broadcast")
         return
     asyncio.run_coroutine_threadsafe(coro, main_event_loop)

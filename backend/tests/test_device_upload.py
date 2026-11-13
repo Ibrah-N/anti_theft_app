@@ -10,8 +10,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-
-import conftest                                   # for TestSessionLocal
 from app.core.config import settings
 from app.models.clip_upload import ClipUpload, ClipUploadStatus
 from app.services import clip_storage
@@ -253,16 +251,14 @@ def test_sane_time():
     assert abs((clip_storage.sane_time(None) - now).total_seconds()) < 5
 
 
-def test_stale_upload_sweep(client, device, segments, auth_headers, monkeypatch):
-    monkeypatch.setattr(clip_storage, "SessionLocal", conftest.TestSessionLocal)
+def test_stale_upload_sweep(client, device, segments, auth_headers, db):
     clip = new_clip_id(); start(client, device, clip); put_seg(client, device, clip, 0, segments[0])
     vid = item_vehicle_id(client, auth_headers)
     assert clip_storage.clip_dir(vid, clip).exists()
 
-    db = conftest.TestSessionLocal()
     row = db.query(ClipUpload).filter(ClipUpload.client_clip_id == clip).one()
     row.updated_at = datetime.now(timezone.utc) - timedelta(hours=settings.CLIP_STALE_HOURS + 1)
-    db.commit(); db.close()
+    db.commit()
 
     clip_storage.sweep_stale_clip_uploads()
     assert not clip_storage.clip_dir(vid, clip).exists()
@@ -283,15 +279,12 @@ def test_finish_notifies_app_once(client, device, segments, monkeypatch):
     assert calls[0][1]["media_id"]
 
 
-def test_notify_clip_ready_broadcasts(monkeypatch):
+def test_notify_clip_ready_broadcasts(client, vehicle, broadcasts, monkeypatch):
     from app.services import mqtt_handlers
-    got = []
-    async def fake(vid, t, p): got.append((vid, t, p))
-    monkeypatch.setattr(mqtt_handlers, "_broadcast_event", fake)
-    monkeypatch.setattr(mqtt_handlers, "_broadcast_threadsafe", lambda c: __import__("asyncio").run(c))
-    monkeypatch.setattr(mqtt_handlers, "SessionLocal", conftest.TestSessionLocal)
     pushes = []
     monkeypatch.setattr(mqtt_handlers, "_send_push_notification", lambda db, v, t, b: pushes.append((t, b)))
-    mqtt_handlers.notify_clip_ready(1, {"media_id": 9, "trigger_reason": "door_opened"})
-    assert got == [(1, "clip_ready", {"media_id": 9, "trigger_reason": "door_opened"})]
-    assert pushes and "door opened" in pushes[0][1]
+
+    mqtt_handlers.notify_clip_ready(vehicle.id, {"media_id": 9, "trigger_reason": "door_opened"})
+
+    assert broadcasts == [(vehicle.id, {"type": "clip_ready", "payload": {"media_id": 9, "trigger_reason": "door_opened"}})]
+    assert pushes == [("Event video ready", "Recording after: door opened")]

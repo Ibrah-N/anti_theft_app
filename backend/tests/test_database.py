@@ -1,16 +1,12 @@
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 
-from tests.conftest import test_engine
+from tests.conftest import TEST_DATABASE_URL, test_engine
 
 
 def test_database_connection():
-    """Ensure the test database is reachable."""
-
+    """The test database is reachable and is the one the suite was configured for."""
     with test_engine.connect() as connection:
-        result = connection.execute(
-            text("SELECT current_database()")
-        )
+        database_name = connection.execute(text("SELECT current_database()")).scalar()
 
-        database_name = result.scalar()
-
-    assert database_name == "smartguard_test"
+    assert database_name == make_url(TEST_DATABASE_URL).database

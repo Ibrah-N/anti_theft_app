@@ -1,0 +1,41 @@
+# Throwaway services for the automated test suite.
+#
+#   docker compose -f docker-compose.test.yml up -d --wait
+#   pytest
+#   docker compose -f docker-compose.test.yml down
+#
+# Versions match production (Ubuntu 24.04: PostgreSQL 16, Mosquitto 2.0.18).
+# Ports are bound to 127.0.0.1 and differ from the defaults (5433 / 1884) so the
+# test services never collide with a real database or broker on the same machine.
+# Data lives in tmpfs: every `up` starts from an empty database.
+
+name: vigilx-test
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: vigilx_test
+      POSTGRES_PASSWORD: vigilx_test
+      POSTGRES_DB: vigilx_test
+    ports:
+      - "127.0.0.1:5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vigilx_test -d vigilx_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0.18
+    ports:
+      - "127.0.0.1:1884:1883"
+    volumes:
+      - ./tests/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -t '$$SYS/broker/version' -C 1 -W 3"]
+      interval: 2s
+      timeout: 5s
+      retries: 30

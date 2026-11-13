@@ -2,16 +2,16 @@
 
 import json
 import logging
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
-from sqlalchemy.orm import Session
+
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from app.core.database import SessionLocal
 from app.core.security import decode_token
 from app.models.user import User
 from app.models.vehicle import Vehicle
-from app.services.websocket_service import ws_manager
 from app.services import webrtc_signaling
 from app.services.mqtt_service import mqtt_service
+from app.services.websocket_service import ws_manager
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +34,7 @@ def get_vehicle_from_token(token: str) -> Vehicle | None:
         if not user or not user.is_active:
             return None
 
-        vehicle = db.query(Vehicle).filter(
-            Vehicle.owner_id == user.id
-        ).first()
+        vehicle = db.query(Vehicle).filter(Vehicle.owner_id == user.id).first()
         return vehicle
     finally:
         db.close()
@@ -45,7 +43,7 @@ def get_vehicle_from_token(token: str) -> Vehicle | None:
 @router.websocket("/ws")
 async def websocket_endpoint(
     websocket: WebSocket,
-    token: str = Query(...),   # ws://localhost:8000/ws?token=eyJ...
+    token: str = Query(...),  # ws://localhost:8000/ws?token=eyJ...
 ):
     # ── Auth ──────────────────────────────────────────────────────────────────
     vehicle = get_vehicle_from_token(token)
@@ -61,22 +59,24 @@ async def websocket_endpoint(
     await ws_manager.connect(vehicle_id, websocket)
 
     # ── Send initial state immediately on connect ─────────────────────────────
-    await websocket.send_json({
-        "type":    "initial_state",
-        "payload": {
-            "engine_on":     vehicle.engine_on,
-            "fuel_flowing":  vehicle.fuel_flowing,
-            "battery_level": vehicle.battery_level,
-            "signal_bars":   vehicle.signal_bars,
-            "speed_kmh":     vehicle.speed_kmh,
-            "zone_fl":       vehicle.zone_fl,
-            "zone_fr":       vehicle.zone_fr,
-            "zone_rl":       vehicle.zone_rl,
-            "zone_rr":       vehicle.zone_rr,
-            "zone_bonnet":   vehicle.zone_bonnet,
-            "zone_trunk":    vehicle.zone_trunk,
+    await websocket.send_json(
+        {
+            "type": "initial_state",
+            "payload": {
+                "engine_on": vehicle.engine_on,
+                "fuel_flowing": vehicle.fuel_flowing,
+                "battery_level": vehicle.battery_level,
+                "signal_bars": vehicle.signal_bars,
+                "speed_kmh": vehicle.speed_kmh,
+                "zone_fl": vehicle.zone_fl,
+                "zone_fr": vehicle.zone_fr,
+                "zone_rl": vehicle.zone_rl,
+                "zone_rr": vehicle.zone_rr,
+                "zone_bonnet": vehicle.zone_bonnet,
+                "zone_trunk": vehicle.zone_trunk,
+            },
         }
-    })
+    )
 
     # ── Keep alive — wait for disconnect ──────────────────────────────────────
     # ── Two-way from here on ─────────────────────────────────────────────────
@@ -95,8 +95,8 @@ async def websocket_endpoint(
                 continue
 
             msg_type = msg.get("type")
-            payload  = msg.get("payload", {})
-            call_id  = payload.get("call_id")
+            payload = msg.get("payload", {})
+            call_id = payload.get("call_id")
 
             # Every signaling message must reference the currently active
             # session — guards against a stale/superseded call's messages
@@ -110,13 +110,11 @@ async def websocket_endpoint(
                     continue
 
             if msg_type == "webrtc_answer":
-                mqtt_service.publish_webrtc_answer(
-                    vehicle.device_id, payload.get("sdp"), call_id
-                )
+                mqtt_service.publish_webrtc_answer(vehicle.device_id, payload.get("sdp"), call_id)
             elif msg_type == "webrtc_ice":
                 candidate = {
-                    "candidate":     payload.get("candidate"),
-                    "sdpMid":        payload.get("sdpMid"),
+                    "candidate": payload.get("candidate"),
+                    "sdpMid": payload.get("sdpMid"),
                     "sdpMLineIndex": payload.get("sdpMLineIndex"),
                 }
                 mqtt_service.publish_webrtc_ice(vehicle.device_id, candidate, call_id)

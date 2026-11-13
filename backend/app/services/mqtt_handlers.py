@@ -1,20 +1,18 @@
 # app/services/mqtt_handlers.py
 
-import logging
-from datetime import datetime, timezone
-
-from app.core.database import SessionLocal
-from app.models.vehicle import Vehicle
-from app.models.alert import Alert, AlertCategory, AlertSeverity
-from app.models.gps_reading import GPSReading
-
 import asyncio
-from app.services.websocket_service import ws_manager
-from app.services import webrtc_signaling
-from app.services import camera_state
+import logging
+from datetime import UTC, datetime
 
 from firebase_admin import messaging
+
+from app.core.database import SessionLocal
+from app.models.alert import Alert, AlertCategory, AlertSeverity
 from app.models.device_token import DeviceToken
+from app.models.gps_reading import GPSReading
+from app.models.vehicle import Vehicle
+from app.services import camera_state, webrtc_signaling
+from app.services.websocket_service import ws_manager
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +33,7 @@ def _broadcast_threadsafe(coro):
 
 def _send_push_notification(db, vehicle, title: str, body: str):
     """Send an FCM push to every device registered to this vehicle's owner."""
-    tokens = db.query(DeviceToken).filter(
-        DeviceToken.user_id == vehicle.owner_id
-    ).all()
+    tokens = db.query(DeviceToken).filter(DeviceToken.user_id == vehicle.owner_id).all()
 
     if not tokens:
         return
@@ -67,9 +63,7 @@ def handle_mqtt_message(msg_type: str, device_id: str, data: dict):
     """
     db = SessionLocal()
     try:
-        vehicle = db.query(Vehicle).filter(
-            Vehicle.device_id == device_id
-        ).first()
+        vehicle = db.query(Vehicle).filter(Vehicle.device_id == device_id).first()
 
         if not vehicle:
             logger.warning(f"Unknown device_id: {device_id} — ignoring message")
@@ -130,28 +124,28 @@ def _handle_sensors(db, vehicle, data: dict):
     }
     """
     zone_map = {
-        "zone_fl":     "zone_fl",
-        "zone_fr":     "zone_fr",
-        "zone_rl":     "zone_rl",
-        "zone_rr":     "zone_rr",
+        "zone_fl": "zone_fl",
+        "zone_fr": "zone_fr",
+        "zone_rl": "zone_rl",
+        "zone_rr": "zone_rr",
         "zone_bonnet": "zone_bonnet",
-        "zone_trunk":  "zone_trunk",
+        "zone_trunk": "zone_trunk",
     }
 
     zone_labels = {
-        "zone_fl":     "Front Left Door",
-        "zone_fr":     "Front Right Door",
-        "zone_rl":     "Rear Left Door",
-        "zone_rr":     "Rear Right Door",
+        "zone_fl": "Front Left Door",
+        "zone_fr": "Front Right Door",
+        "zone_rl": "Rear Left Door",
+        "zone_rr": "Rear Right Door",
         "zone_bonnet": "Bonnet",
-        "zone_trunk":  "Trunk",
+        "zone_trunk": "Trunk",
     }
 
     for key, attr in zone_map.items():
         if key not in data:
             continue
 
-        new_state    = bool(data[key])
+        new_state = bool(data[key])
         current_state = getattr(vehicle, attr)
 
         # Update zone state
@@ -161,11 +155,11 @@ def _handle_sensors(db, vehicle, data: dict):
         if current_state and not new_state:
             label = zone_labels[key]
             alert = Alert(
-                vehicle_id  = vehicle.id,
-                title       = f"{label} Opened",
-                description = f"{label} opened unexpectedly",
-                category    = AlertCategory.door,
-                severity    = AlertSeverity.warning,
+                vehicle_id=vehicle.id,
+                title=f"{label} Opened",
+                description=f"{label} opened unexpectedly",
+                category=AlertCategory.door,
+                severity=AlertSeverity.warning,
             )
             db.add(alert)
             db.flush()  # assigns alert.id and created_at before broadcasting
@@ -174,26 +168,26 @@ def _handle_sensors(db, vehicle, data: dict):
             _send_push_notification(db, vehicle, alert.title, alert.description)
 
     logger.info(f"Sensor update saved — vehicle {vehicle.id}")
-    
+
     # ── Push to WebSocket clients ─────────────────────────────────────────────
     _broadcast_threadsafe(_broadcast_sensors(vehicle))
 
 
-
 async def _broadcast_sensors(vehicle):
-    await ws_manager.broadcast(vehicle.id, {
-        "type": "sensor_update",
-        "payload": {
-            "zone_fl":     vehicle.zone_fl,
-            "zone_fr":     vehicle.zone_fr,
-            "zone_rl":     vehicle.zone_rl,
-            "zone_rr":     vehicle.zone_rr,
-            "zone_bonnet": vehicle.zone_bonnet,
-            "zone_trunk":  vehicle.zone_trunk,
-        }
-    })
-
-
+    await ws_manager.broadcast(
+        vehicle.id,
+        {
+            "type": "sensor_update",
+            "payload": {
+                "zone_fl": vehicle.zone_fl,
+                "zone_fr": vehicle.zone_fr,
+                "zone_rl": vehicle.zone_rl,
+                "zone_rr": vehicle.zone_rr,
+                "zone_bonnet": vehicle.zone_bonnet,
+                "zone_trunk": vehicle.zone_trunk,
+            },
+        },
+    )
 
 
 # ── GPS handler ───────────────────────────────────────────────────────────────
@@ -206,12 +200,12 @@ def _handle_gps(db, vehicle, data: dict):
     }
     """
     reading = GPSReading(
-        vehicle_id  = vehicle.id,
-        latitude    = data.get("latitude",  0.0),
-        longitude   = data.get("longitude", 0.0),
-        speed_kmh   = data.get("speed_kmh", 0.0),
-        city        = data.get("city"),
-        address     = data.get("address"),
+        vehicle_id=vehicle.id,
+        latitude=data.get("latitude", 0.0),
+        longitude=data.get("longitude", 0.0),
+        speed_kmh=data.get("speed_kmh", 0.0),
+        city=data.get("city"),
+        address=data.get("address"),
     )
     db.add(reading)
 
@@ -238,13 +232,13 @@ def _handle_status(db, vehicle, data: dict):
     if "battery_level" in data:
         vehicle.battery_level = float(data["battery_level"])
     if "signal_bars" in data:
-        vehicle.signal_bars   = int(data["signal_bars"])
+        vehicle.signal_bars = int(data["signal_bars"])
     if "engine_on" in data:
-        vehicle.engine_on     = bool(data["engine_on"])
+        vehicle.engine_on = bool(data["engine_on"])
     if "fuel_flowing" in data:
-        vehicle.fuel_flowing  = bool(data["fuel_flowing"])
+        vehicle.fuel_flowing = bool(data["fuel_flowing"])
     if "is_armed" in data:
-        vehicle.is_armed      = bool(data["is_armed"])
+        vehicle.is_armed = bool(data["is_armed"])
 
     logger.info(f"Status update saved — vehicle {vehicle.id}")
 
@@ -263,30 +257,33 @@ def _handle_status(db, vehicle, data: dict):
 
 
 async def _broadcast_status(vehicle):
-    await ws_manager.broadcast(vehicle.id, {
-        "type": "status_update",
-        "payload": {
-            "battery_level": vehicle.battery_level,
-            "signal_bars":   vehicle.signal_bars,
-            "engine_on":     vehicle.engine_on,
-            "fuel_flowing":  vehicle.fuel_flowing,
-            "speed_kmh":     vehicle.speed_kmh,
-            "is_armed":      vehicle.is_armed,
-        }
-    })
+    await ws_manager.broadcast(
+        vehicle.id,
+        {
+            "type": "status_update",
+            "payload": {
+                "battery_level": vehicle.battery_level,
+                "signal_bars": vehicle.signal_bars,
+                "engine_on": vehicle.engine_on,
+                "fuel_flowing": vehicle.fuel_flowing,
+                "speed_kmh": vehicle.speed_kmh,
+                "is_armed": vehicle.is_armed,
+            },
+        },
+    )
 
 
 # ── ACK handler ───────────────────────────────────────────────────────────────
 # Maps the "cmd" field of an ACK payload to the Vehicle column it confirms.
 _ACK_CMD_TO_ATTR = {
-    "lock":       "doors_locked",
-    "mirror_fl":  "mirror_fl",
-    "mirror_fr":  "mirror_fr",
-    "mirror_rl":  "mirror_rl",
-    "mirror_rr":  "mirror_rr",
-    "start":      "engine_started",
-    "ac":         "ac_on",
-    "arm":        "is_armed",
+    "lock": "doors_locked",
+    "mirror_fl": "mirror_fl",
+    "mirror_fr": "mirror_fr",
+    "mirror_rl": "mirror_rl",
+    "mirror_rr": "mirror_rr",
+    "start": "engine_started",
+    "ac": "ac_on",
+    "arm": "is_armed",
 }
 
 
@@ -299,8 +296,8 @@ def _handle_ack(db, vehicle, data: dict):
     vehicle's state untouched, and the app is notified via WebSocket so it
     can clear its "pending" UI state and show an error.
     """
-    cmd     = data.get("cmd")
-    state   = bool(data.get("state", False))
+    cmd = data.get("cmd")
+    state = bool(data.get("state", False))
     success = bool(data.get("success", False))
 
     attr = _ACK_CMD_TO_ATTR.get(cmd)
@@ -318,24 +315,27 @@ def _handle_ack(db, vehicle, data: dict):
 
 
 async def _broadcast_ack(vehicle, cmd: str, state: bool, success: bool):
-    await ws_manager.broadcast(vehicle.id, {
-        "type": "command_ack",
-        "payload": {
-            "cmd":     cmd,
-            "state":   state,
-            "success": success,
-            # Echo current confirmed control states so the client can
-            # reconcile in one shot instead of trusting only `state`.
-            "is_armed":       vehicle.is_armed,
-            "doors_locked":   vehicle.doors_locked,
-            "mirror_fl":      vehicle.mirror_fl,
-            "mirror_fr":      vehicle.mirror_fr,
-            "mirror_rl":      vehicle.mirror_rl,
-            "mirror_rr":      vehicle.mirror_rr,
-            "engine_started": vehicle.engine_started,
-            "ac_on":          vehicle.ac_on,
-        }
-    })
+    await ws_manager.broadcast(
+        vehicle.id,
+        {
+            "type": "command_ack",
+            "payload": {
+                "cmd": cmd,
+                "state": state,
+                "success": success,
+                # Echo current confirmed control states so the client can
+                # reconcile in one shot instead of trusting only `state`.
+                "is_armed": vehicle.is_armed,
+                "doors_locked": vehicle.doors_locked,
+                "mirror_fl": vehicle.mirror_fl,
+                "mirror_fr": vehicle.mirror_fr,
+                "mirror_rl": vehicle.mirror_rl,
+                "mirror_rr": vehicle.mirror_rr,
+                "engine_started": vehicle.engine_started,
+                "ac_on": vehicle.ac_on,
+            },
+        },
+    )
 
 
 # ── WebRTC signaling relay (device → app) ──────────────────────────────────────
@@ -350,15 +350,16 @@ def _handle_webrtc_offer(db, vehicle, data: dict):
     call_id = data.get("call_id")
     if not webrtc_signaling.is_valid_call(vehicle.id, call_id):
         logger.warning(
-            f"Vehicle {vehicle.id} — dropping WebRTC offer for stale/unknown "
-            f"call_id={call_id}"
+            f"Vehicle {vehicle.id} — dropping WebRTC offer for stale/unknown " f"call_id={call_id}"
         )
         return
 
     logger.info(f"WebRTC offer received — vehicle {vehicle.id} call_id={call_id}")
-    _broadcast_threadsafe(_broadcast_webrtc_signal(
-        vehicle, "webrtc_offer", {"sdp": data.get("sdp"), "call_id": call_id}
-    ))
+    _broadcast_threadsafe(
+        _broadcast_webrtc_signal(
+            vehicle, "webrtc_offer", {"sdp": data.get("sdp"), "call_id": call_id}
+        )
+    )
 
 
 def _handle_webrtc_ice(db, vehicle, data: dict):
@@ -371,21 +372,28 @@ def _handle_webrtc_ice(db, vehicle, data: dict):
         )
         return
 
-    _broadcast_threadsafe(_broadcast_webrtc_signal(
-        vehicle, "webrtc_ice", {
-            "candidate":     data.get("candidate"),
-            "sdpMid":        data.get("sdpMid"),
-            "sdpMLineIndex": data.get("sdpMLineIndex"),
-            "call_id":       call_id,
-        }
-    ))
+    _broadcast_threadsafe(
+        _broadcast_webrtc_signal(
+            vehicle,
+            "webrtc_ice",
+            {
+                "candidate": data.get("candidate"),
+                "sdpMid": data.get("sdpMid"),
+                "sdpMLineIndex": data.get("sdpMLineIndex"),
+                "call_id": call_id,
+            },
+        )
+    )
 
 
 async def _broadcast_webrtc_signal(vehicle, msg_type: str, payload: dict):
-    await ws_manager.broadcast(vehicle.id, {
-        "type":    msg_type,
-        "payload": payload,
-    })
+    await ws_manager.broadcast(
+        vehicle.id,
+        {
+            "type": msg_type,
+            "payload": payload,
+        },
+    )
 
 
 # ── Camera state (device → app) ───────────────────────────────────────────────
@@ -399,7 +407,9 @@ def _handle_camera_state(db, vehicle, data: dict):
     """
     clean = camera_state.set_state(vehicle.id, data)
     if clean is None:
-        logger.warning(f"Vehicle {vehicle.id} — ignoring invalid camera state: {data.get('state')!r}")
+        logger.warning(
+            f"Vehicle {vehicle.id} — ignoring invalid camera state: {data.get('state')!r}"
+        )
         return
     logger.info(f"Camera state — vehicle {vehicle.id}: {clean['state']} clip={clean['clip_id']}")
     _broadcast_threadsafe(_broadcast_event(vehicle.id, "camera_state", clean))
@@ -424,26 +434,32 @@ def notify_clip_ready(vehicle_id: int, payload: dict):
         if vehicle is None:
             return
         reason = payload.get("trigger_reason")
-        body = (f"Recording after: {reason.replace('_', ' ')}" if reason
-                else "A new event video was saved to your gallery")
+        body = (
+            f"Recording after: {reason.replace('_', ' ')}"
+            if reason
+            else "A new event video was saved to your gallery"
+        )
         _send_push_notification(db, vehicle, "Event video ready", body)
     except Exception as e:
         logger.error(f"clip_ready push failed: {e}")
     finally:
         db.close()
 
-        
+
 async def _broadcast_alert(vehicle, alert):
-    created_at = alert.created_at or datetime.now(timezone.utc)
-    await ws_manager.broadcast(vehicle.id, {
-        "type": "alert",
-        "payload": {
-            "id":          alert.id,
-            "title":       alert.title,
-            "description": alert.description,
-            "category":    alert.category.value,
-            "severity":    alert.severity.value,
-            "is_read":     alert.is_read,
-            "created_at":  created_at.isoformat(),
-        }
-    })
+    created_at = alert.created_at or datetime.now(UTC)
+    await ws_manager.broadcast(
+        vehicle.id,
+        {
+            "type": "alert",
+            "payload": {
+                "id": alert.id,
+                "title": alert.title,
+                "description": alert.description,
+                "category": alert.category.value,
+                "severity": alert.severity.value,
+                "is_read": alert.is_read,
+                "created_at": created_at.isoformat(),
+            },
+        },
+    )

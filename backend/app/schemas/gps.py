@@ -1,31 +1,34 @@
 # app/schemas/gps.py
 
-from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional
+
+from pydantic import BaseModel
+
 
 # ── Incoming reading (from device, used in Phase 3 MQTT bridge) ──────────────
 class GPSReadingCreate(BaseModel):
-    latitude:  float
+    latitude: float
     longitude: float
     speed_kmh: float = 0.0
-    city:      Optional[str] = None
-    address:   Optional[str] = None
+    city: str | None = None
+    address: str | None = None
+
 
 # ── Response ──────────────────────────────────────────────────────────────────
 class GPSReadingResponse(BaseModel):
-    id:          int
-    vehicle_id:  int
-    latitude:    float
-    longitude:   float
-    speed_kmh:   float
-    city:        Optional[str]
-    address:     Optional[str]
+    id: int
+    vehicle_id: int
+    latitude: float
+    longitude: float
+    speed_kmh: float
+    city: str | None
+    address: str | None
     recorded_at: datetime
 
     model_config = {"from_attributes": True}
 
+
 # ── History list response ─────────────────────────────────────────────────────
 class GPSHistoryResponse(BaseModel):
-    total:    int
+    total: int
     readings: list[GPSReadingResponse]

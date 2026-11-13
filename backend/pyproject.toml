@@ -1,0 +1,47 @@
+# Tool configuration for the backend.
+# Ruff = linter (finds bugs and bad patterns) + formatter (consistent layout).
+#   ruff check .          # report problems
+#   ruff check --fix .    # fix the safe ones automatically
+#   ruff format .         # reformat every file
+
+[tool.ruff]
+target-version = "py312"          # production servers run Python 3.12
+line-length = 100                 # the formatter wraps code to this width
+extend-exclude = [
+    "alembic/versions",           # migrations are history: never rewrite them
+    "venv",
+    ".venv",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes: undefined names, unused imports/variables
+    "I",   # import sorting
+    "B",   # bugbear: likely bugs and design problems
+    "UP",  # pyupgrade: modern Python syntax for the target version
+]
+# Never auto-fix these; they need a human:
+#   E712: in SQLAlchemy, `Model.col == False` must become `Model.col.is_(False)`.
+#         Ruff's fix (`is False`) turns the SQL filter into a plain Python False.
+unfixable = ["E712"]
+
+[tool.ruff.lint.pycodestyle]
+max-line-length = 120             # lines the formatter can't wrap (long strings, URLs)
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency markers are meant to be used as default arguments.
+extend-immutable-calls = [
+    "fastapi.Body",
+    "fastapi.Depends",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Header",
+    "fastapi.Path",
+    "fastapi.Query",
+    "fastapi.Security",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tests"]

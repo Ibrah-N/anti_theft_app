@@ -1,10 +1,8 @@
 # app/services/mqtt_service.py
 
-import ssl
 import json
 import logging
-import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import paho.mqtt.client as mqtt
 
@@ -12,58 +10,76 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+
 # ── Topic constants ────────────────────────────────────────────────────────────
 def topic_sensors(device_id: str) -> str:
     return f"sg/{device_id}/sensors"
 
+
 def topic_gps(device_id: str) -> str:
     return f"sg/{device_id}/gps"
+
 
 def topic_status(device_id: str) -> str:
     return f"sg/{device_id}/status"
 
+
 def topic_cmd_engine(device_id: str) -> str:
     return f"sg/{device_id}/cmd/engine"
+
 
 def topic_cmd_fuel(device_id: str) -> str:
     return f"sg/{device_id}/cmd/fuel"
 
+
 def topic_cmd_lock(device_id: str) -> str:
     return f"sg/{device_id}/cmd/lock"
+
 
 def topic_cmd_mirror(device_id: str, position: str) -> str:
     # position: "fl" | "fr" | "rl" | "rr"
     return f"sg/{device_id}/cmd/mirror/{position}"
 
+
 def topic_cmd_start(device_id: str) -> str:
     return f"sg/{device_id}/cmd/start"
+
 
 def topic_cmd_ac(device_id: str) -> str:
     return f"sg/{device_id}/cmd/ac"
 
+
 def topic_cmd_arm(device_id: str) -> str:
     return f"sg/{device_id}/cmd/arm"
+
 
 def topic_ack(device_id: str) -> str:
     return f"sg/{device_id}/ack"
 
+
 def topic_cmd_camera_start(device_id: str) -> str:
     return f"sg/{device_id}/cmd/camera/start"
+
 
 def topic_cmd_camera_stop(device_id: str) -> str:
     return f"sg/{device_id}/cmd/camera/stop"
 
+
 def topic_cmd_webrtc_answer(device_id: str) -> str:
     return f"sg/{device_id}/cmd/webrtc/answer"
+
 
 def topic_cmd_webrtc_ice(device_id: str) -> str:
     return f"sg/{device_id}/cmd/webrtc/ice"
 
+
 def topic_webrtc_offer(device_id: str) -> str:
     return f"sg/{device_id}/webrtc/offer"
 
+
 def topic_webrtc_ice(device_id: str) -> str:
     return f"sg/{device_id}/webrtc/ice"
+
 
 def topic_camera_state(device_id: str) -> str:
     return f"sg/{device_id}/camera/state"
@@ -80,17 +96,17 @@ class MQTTService:
             settings.MQTT_USERNAME,
             settings.MQTT_PASSWORD,
         )
-#        self.client.tls_set(
-#            cert_reqs=ssl.CERT_REQUIRED,
-#            tls_version=ssl.PROTOCOL_TLS_CLIENT,
-#        )
-        self._connected   = False
-        self._db_callback = None   # injected after startup to avoid circular imports
+        #        self.client.tls_set(
+        #            cert_reqs=ssl.CERT_REQUIRED,
+        #            tls_version=ssl.PROTOCOL_TLS_CLIENT,
+        #        )
+        self._connected = False
+        self._db_callback = None  # injected after startup to avoid circular imports
 
         # Wire callbacks
-        self.client.on_connect    = self._on_connect
+        self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
-        self.client.on_message    = self._on_message
+        self.client.on_message = self._on_message
 
     # ── Connection ─────────────────────────────────────────────────────────────
     def connect(self):
@@ -119,11 +135,11 @@ class MQTTService:
             logger.info("✅ MQTT connected to broker")
             # Subscribe to all device topics using wildcard
             client.subscribe("sg/+/sensors", qos=1)
-            client.subscribe("sg/+/gps",     qos=1)
-            client.subscribe("sg/+/status",  qos=1)
-            client.subscribe("sg/+/ack",     qos=1)
+            client.subscribe("sg/+/gps", qos=1)
+            client.subscribe("sg/+/status", qos=1)
+            client.subscribe("sg/+/ack", qos=1)
             client.subscribe("sg/+/webrtc/offer", qos=1)
-            client.subscribe("sg/+/webrtc/ice",   qos=1)
+            client.subscribe("sg/+/webrtc/ice", qos=1)
             client.subscribe("sg/+/camera/state", qos=1)
             logger.info(
                 "Subscribed to sg/+/sensors, sg/+/gps, sg/+/status, sg/+/ack, "
@@ -137,7 +153,7 @@ class MQTTService:
         logger.warning(f"MQTT disconnected — reason: {reason_code}")
 
     def _on_message(self, client, userdata, message):
-        topic   = message.topic
+        topic = message.topic
         payload = message.payload.decode("utf-8")
         logger.info(f"MQTT message received → topic: {topic}")
 
@@ -148,7 +164,7 @@ class MQTTService:
             return
 
         # Extract device_id from topic — sg/{device_id}/sensors
-        parts     = topic.split("/")
+        parts = topic.split("/")
         device_id = parts[1] if len(parts) >= 2 else None
 
         if not device_id:
@@ -211,15 +227,14 @@ class MQTTService:
         if self._db_callback:
             self._db_callback("camera_state", device_id, data)
 
-
     # ── Publish commands ───────────────────────────────────────────────────────
     def publish_engine_command(self, device_id: str, state: bool):
         payload = json.dumps({"state": state, "ts": self._ts()})
         self.client.publish(
             topic_cmd_engine(device_id),
             payload,
-            qos=1,          # QoS 1 = at least once delivery
-            retain=False,    # one-shot command — never replay a stale tap
+            qos=1,  # QoS 1 = at least once delivery
+            retain=False,  # one-shot command — never replay a stale tap
         )
         logger.info(f"Published engine command → {device_id}: {state}")
 
@@ -284,17 +299,20 @@ class MQTTService:
         )
         logger.info(f"Published arm command → {device_id}: {state}")
 
-    def publish_camera_start_command(self, device_id: str, call_id: str,
-                                     finalize_recording: bool = True):
+    def publish_camera_start_command(
+        self, device_id: str, call_id: str, finalize_recording: bool = True
+    ):
         # finalize_recording=True tells the camera: if you are recording an
         # event clip right now, close that file safely, start the live stream
         # FIRST, and upload the finished clip afterwards (stream-first).
         # Older firmware simply ignores the extra field.
-        payload = json.dumps({
-            "call_id": call_id,
-            "finalize_recording": finalize_recording,
-            "ts": self._ts(),
-        })
+        payload = json.dumps(
+            {
+                "call_id": call_id,
+                "finalize_recording": finalize_recording,
+                "ts": self._ts(),
+            }
+        )
         self.client.publish(
             topic_cmd_camera_start(device_id),
             payload,
@@ -339,19 +357,16 @@ class MQTTService:
             return
 
         payload = json.dumps({"cmd": "gps_request", "ts": self._ts()})
-        result  = self.client.publish(
+        result = self.client.publish(
             f"sg/{device_id}/cmd/gps_request",
             payload,
             qos=1,
         )
-        logger.info(
-            f"Published GPS request → {device_id} "
-            f"(rc={result.rc} mid={result.mid})"
-        )
+        logger.info(f"Published GPS request → {device_id} " f"(rc={result.rc} mid={result.mid})")
 
     @staticmethod
     def _ts() -> str:
-        return datetime.now(timezone.utc).isoformat()
+        return datetime.now(UTC).isoformat()
 
     @property
     def is_connected(self) -> bool:

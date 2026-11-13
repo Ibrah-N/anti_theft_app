@@ -1,9 +1,8 @@
 # app/services/webrtc_signaling.py
 
-import uuid
 import logging
-from datetime import datetime, timezone
-from typing import Optional
+import uuid
+from datetime import UTC, datetime
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +18,8 @@ def start_session(vehicle_id: int) -> str:
     """Begin a new camera session for this vehicle, replacing any previous one."""
     call_id = str(uuid.uuid4())
     _active_sessions[vehicle_id] = {
-        "call_id":    call_id,
-        "started_at": datetime.now(timezone.utc),
+        "call_id": call_id,
+        "started_at": datetime.now(UTC),
     }
     logger.info(f"WebRTC session started — vehicle {vehicle_id} call_id={call_id}")
     return call_id
@@ -35,7 +34,7 @@ def end_session(vehicle_id: int):
         del _active_sessions[vehicle_id]
 
 
-def get_call_id(vehicle_id: int) -> Optional[str]:
+def get_call_id(vehicle_id: int) -> str | None:
     session = _active_sessions.get(vehicle_id)
     return session["call_id"] if session else None
 

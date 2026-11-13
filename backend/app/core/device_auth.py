@@ -46,7 +46,7 @@ def _unauthorized(detail: str = "Invalid device credentials") -> HTTPException:
 
 
 def get_device_vehicle(
-    x_device_id: str | None  = Header(default=None),
+    x_device_id: str | None = Header(default=None),
     x_device_key: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> Vehicle:
@@ -59,7 +59,7 @@ def get_device_vehicle(
     # Always compute and compare a hash, even for an unknown device, so the
     # response time doesn't reveal which device IDs exist.
     presented = hash_device_key(x_device_key)
-    stored    = vehicle.device_key_hash if vehicle and vehicle.device_key_hash else "0" * 64
+    stored = vehicle.device_key_hash if vehicle and vehicle.device_key_hash else "0" * 64
 
     if not hmac.compare_digest(presented, stored) or vehicle is None or not vehicle.device_key_hash:
         logger.warning(f"Device auth failed for device_id={x_device_id!r}")

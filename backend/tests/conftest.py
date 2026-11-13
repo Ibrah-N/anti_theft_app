@@ -53,12 +53,13 @@ from dataclasses import dataclass, field  # noqa: E402
 from typing import Any  # noqa: E402
 
 import pytest  # noqa: E402
-from alembic import command  # noqa: E402
-from alembic.config import Config  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, text  # noqa: E402
 from sqlalchemy.engine import make_url  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
+
+from alembic import command  # noqa: E402
+from alembic.config import Config  # noqa: E402
 
 # ── 2. Safety guard ───────────────────────────────────────────────────────────
 _db_name = make_url(TEST_DATABASE_URL).database or ""

@@ -1,8 +1,8 @@
 # app/services/turn_credentials.py
 
-import hmac
-import hashlib
 import base64
+import hashlib
+import hmac
 import time
 
 from app.core.config import settings
@@ -18,7 +18,7 @@ def generate_turn_credentials() -> dict:
     `lt-cred-mech` in turnserver.conf) — nothing is stored server-side,
     and a leaked credential is only useful until it expires.
     """
-    username   = str(int(time.time()) + TURN_CREDENTIAL_TTL_SECONDS)
+    username = str(int(time.time()) + TURN_CREDENTIAL_TTL_SECONDS)
     credential = base64.b64encode(
         hmac.new(
             settings.TURN_SECRET.encode(),
@@ -28,9 +28,9 @@ def generate_turn_credentials() -> dict:
     ).decode()
 
     return {
-        "username":   username,
+        "username": username,
         "credential": credential,
-        "ttl":        TURN_CREDENTIAL_TTL_SECONDS,
+        "ttl": TURN_CREDENTIAL_TTL_SECONDS,
         "urls": [
             f"turn:{settings.TURN_HOST}:3478",
             f"turn:{settings.TURN_HOST}:3478?transport=tcp",
@@ -50,8 +50,8 @@ def get_ice_servers() -> list[dict]:
     return [
         {"urls": "stun:stun.l.google.com:19302"},
         {
-            "urls":       turn["urls"],
-            "username":   turn["username"],
+            "urls": turn["urls"],
+            "username": turn["username"],
             "credential": turn["credential"],
         },
     ]

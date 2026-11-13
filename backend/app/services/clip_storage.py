@@ -13,7 +13,7 @@ import re
 import shutil
 import subprocess
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 # The clip id becomes part of a folder name, so it is restricted to a safe
 # alphabet (no slashes, no dots) — see also the same pattern on the routes.
 CLIP_ID_PATTERN = r"^[A-Za-z0-9_-]{8,64}$"
-_CLIP_ID_RE     = re.compile(CLIP_ID_PATTERN)
-_SEGMENT_RE     = re.compile(r"^seg_(\d{5})\.bin$")
+_CLIP_ID_RE = re.compile(CLIP_ID_PATTERN)
+_SEGMENT_RE = re.compile(r"^seg_(\d{5})\.bin$")
 
 JOIN_TIMEOUT_SECONDS = 180
 
@@ -45,7 +45,7 @@ def media_dir(vehicle_id: int) -> Path:
 
 
 def clip_dir(vehicle_id: int, clip_id: str, create: bool = False) -> Path:
-    if not _CLIP_ID_RE.match(clip_id):          # defence in depth — never build a path from unchecked input
+    if not _CLIP_ID_RE.match(clip_id):  # defence in depth — never build a path from unchecked input
         raise ValueError("invalid clip id")
     d = Path(settings.MEDIA_ROOT) / str(vehicle_id) / "_clips" / clip_id
     if create:
@@ -102,16 +102,28 @@ def join_segments(segment_files: list[Path], out_path: Path):
             encoding="utf-8",
         )
         cmd = [
-            "ffmpeg", "-nostdin", "-y", "-loglevel", "error",
-            "-f", "concat", "-safe", "0", "-i", str(list_file),
-            "-c", "copy", "-movflags", "+faststart",
+            "ffmpeg",
+            "-nostdin",
+            "-y",
+            "-loglevel",
+            "error",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(list_file),
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
             str(out_path),
         ]
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=JOIN_TIMEOUT_SECONDS)
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as e:
             out_path.unlink(missing_ok=True)
-            raise ClipJoinError("ffmpeg timed out while joining segments")
+            raise ClipJoinError("ffmpeg timed out while joining segments") from e
 
     if proc.returncode != 0 or not out_path.exists() or out_path.stat().st_size == 0:
         out_path.unlink(missing_ok=True)
@@ -124,9 +136,19 @@ def probe_duration(path: Path) -> float | None:
         return None
     try:
         proc = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-             "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
-            capture_output=True, text=True, timeout=30,
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         return float(proc.stdout.strip()) if proc.returncode == 0 and proc.stdout.strip() else None
     except (subprocess.TimeoutExpired, ValueError):
@@ -141,11 +163,11 @@ def sane_time(dt: datetime | None) -> datetime:
     place in the gallery and make the 30-day cleanup delete it immediately, so
     anything implausible falls back to "now".
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if dt is None:
         return now
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     if dt > now + timedelta(minutes=5) or dt < now - timedelta(days=7):
         return now
     return dt
@@ -158,13 +180,17 @@ def sweep_stale_clip_uploads():
     signal mid-upload may never come back for its clip; its half-finished
     segments would otherwise sit on disk forever.
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=settings.CLIP_STALE_HOURS)
+    cutoff = datetime.now(UTC) - timedelta(hours=settings.CLIP_STALE_HOURS)
     db = SessionLocal()
     try:
-        stale = db.query(ClipUpload).filter(
-            ClipUpload.status.in_([ClipUploadStatus.uploading, ClipUploadStatus.failed]),
-            ClipUpload.updated_at < cutoff,
-        ).all()
+        stale = (
+            db.query(ClipUpload)
+            .filter(
+                ClipUpload.status.in_([ClipUploadStatus.uploading, ClipUploadStatus.failed]),
+                ClipUpload.updated_at < cutoff,
+            )
+            .all()
+        )
         for row in stale:
             remove_clip_dir(row.vehicle_id, row.client_clip_id)
             row.status = ClipUploadStatus.aborted

@@ -19,7 +19,7 @@ import logging
 import os
 import shutil
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
@@ -30,17 +30,20 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import get_current_vehicle
-from app.core.device_auth import generate_device_key, hash_device_key, get_device_vehicle
-from app.models.camera_media import CameraMedia, CameraMediaType, CameraMediaSource
+from app.core.device_auth import generate_device_key, get_device_vehicle, hash_device_key
+from app.models.camera_media import CameraMedia, CameraMediaSource, CameraMediaType
 from app.models.clip_upload import ClipUpload, ClipUploadStatus
 from app.models.vehicle import Vehicle
 from app.schemas.camera_media import CameraMediaResponse
 from app.schemas.clip_upload import (
-    DeviceKeyResponse, ClipStartRequest, ClipFinishRequest, ClipStatusResponse,
+    ClipFinishRequest,
+    ClipStartRequest,
+    ClipStatusResponse,
+    DeviceKeyResponse,
 )
 from app.services import clip_storage
-from app.services.mqtt_handlers import notify_clip_ready
 from app.services.clip_storage import CLIP_ID_PATTERN, ClipJoinError
+from app.services.mqtt_handlers import notify_clip_ready
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -52,11 +55,11 @@ SegIndex = Annotated[int, PathParam(ge=0)]
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def _get_upload(db: Session, vehicle: Vehicle, clip_id: str, lock: bool = False) -> ClipUpload:
     q = db.query(ClipUpload).filter(
-        ClipUpload.vehicle_id == vehicle.id,      # a device can only ever touch its own vehicle's clips
+        ClipUpload.vehicle_id == vehicle.id,  # a device can only ever touch its own vehicle's clips
         ClipUpload.client_clip_id == clip_id,
     )
     if lock:
-        q = q.with_for_update()                   # serialise two simultaneous "finish" calls
+        q = q.with_for_update()  # serialise two simultaneous "finish" calls
     upload = q.first()
     if upload is None:
         raise HTTPException(status_code=404, detail="Unknown clip — call POST /clips first")
@@ -70,13 +73,13 @@ def _status(db: Session, vehicle: Vehicle, upload: ClipUpload) -> ClipStatusResp
 
     media = db.get(CameraMedia, upload.media_id) if upload.media_id else None
     return ClipStatusResponse(
-        client_clip_id    = upload.client_clip_id,
-        status            = upload.status,
-        segments_received = sorted(segs),
-        bytes_received    = sum(segs.values()) if segs else upload.bytes_received,
-        total_segments    = upload.total_segments,
-        media_id          = upload.media_id,
-        media             = CameraMediaResponse.model_validate(media) if media else None,
+        client_clip_id=upload.client_clip_id,
+        status=upload.status,
+        segments_received=sorted(segs),
+        bytes_received=sum(segs.values()) if segs else upload.bytes_received,
+        total_segments=upload.total_segments,
+        media_id=upload.media_id,
+        media=CameraMediaResponse.model_validate(media) if media else None,
     )
 
 
@@ -92,8 +95,8 @@ def create_device_key(
     immediately stops the old one from working — use it if a key leaks.
     """
     key = generate_device_key()
-    vehicle.device_key_hash       = hash_device_key(key)
-    vehicle.device_key_created_at = datetime.now(timezone.utc)
+    vehicle.device_key_hash = hash_device_key(key)
+    vehicle.device_key_created_at = datetime.now(UTC)
     db.commit()
     logger.info(f"Device key (re)created — vehicle {vehicle.id}")
     return DeviceKeyResponse(device_id=vehicle.device_id, device_key=key)
@@ -106,32 +109,38 @@ def start_clip(
     vehicle: Vehicle = Depends(get_device_vehicle),
     db: Session = Depends(get_db),
 ):
-    upload = db.query(ClipUpload).filter(
-        ClipUpload.vehicle_id == vehicle.id,
-        ClipUpload.client_clip_id == payload.client_clip_id,
-    ).first()
+    upload = (
+        db.query(ClipUpload)
+        .filter(
+            ClipUpload.vehicle_id == vehicle.id,
+            ClipUpload.client_clip_id == payload.client_clip_id,
+        )
+        .first()
+    )
 
     if upload is None:
         upload = ClipUpload(
-            vehicle_id     = vehicle.id,
-            client_clip_id = payload.client_clip_id,
-            trigger_reason = payload.trigger_reason,
-            recorded_at    = clip_storage.sane_time(payload.recorded_at),
+            vehicle_id=vehicle.id,
+            client_clip_id=payload.client_clip_id,
+            trigger_reason=payload.trigger_reason,
+            recorded_at=clip_storage.sane_time(payload.recorded_at),
         )
         db.add(upload)
         try:
             db.commit()
-        except IntegrityError:                    # two identical requests raced — the other one won
+        except IntegrityError:  # two identical requests raced — the other one won
             db.rollback()
             upload = _get_upload(db, vehicle, payload.client_clip_id)
         else:
             db.refresh(upload)
-            logger.info(f"Clip started — vehicle {vehicle.id} clip={upload.client_clip_id} "
-                        f"reason={upload.trigger_reason}")
+            logger.info(
+                f"Clip started — vehicle {vehicle.id} clip={upload.client_clip_id} "
+                f"reason={upload.trigger_reason}"
+            )
     elif upload.status == ClipUploadStatus.aborted:
         # The camera is starting this clip over: forget the old attempt.
         clip_storage.remove_clip_dir(vehicle.id, upload.client_clip_id)
-        upload.status         = ClipUploadStatus.uploading
+        upload.status = ClipUploadStatus.uploading
         upload.bytes_received = 0
         upload.total_segments = None
         db.commit()
@@ -166,18 +175,24 @@ async def upload_segment(
     upload = _get_upload(db, vehicle, clip_id)
 
     if upload.status == ClipUploadStatus.complete:
-        return _status(db, vehicle, upload)       # already in the gallery — nothing to do
+        return _status(db, vehicle, upload)  # already in the gallery — nothing to do
     if upload.status == ClipUploadStatus.aborted:
-        raise HTTPException(status_code=409, detail="Clip was aborted — call POST /clips to start over")
+        raise HTTPException(
+            status_code=409, detail="Clip was aborted — call POST /clips to start over"
+        )
     if index >= settings.CLIP_MAX_SEGMENTS:
-        raise HTTPException(status_code=422, detail=f"Segment index must be below {settings.CLIP_MAX_SEGMENTS}")
+        raise HTTPException(
+            status_code=422, detail=f"Segment index must be below {settings.CLIP_MAX_SEGMENTS}"
+        )
 
     clip_storage.check_disk_space()
     clip_storage.clip_dir(vehicle.id, clip_id, create=True)
     final = clip_storage.segment_path(vehicle.id, clip_id, index)
-    part  = final.with_suffix(".part")
+    part = final.with_suffix(".part")
 
-    other_bytes = sum(size for i, size in clip_storage.list_segments(vehicle.id, clip_id).items() if i != index)
+    other_bytes = sum(
+        size for i, size in clip_storage.list_segments(vehicle.id, clip_id).items() if i != index
+    )
 
     # Stream to disk with hard caps — never trust the client-declared size.
     size = 0
@@ -191,16 +206,22 @@ async def upload_segment(
                 if size > settings.CLIP_MAX_SEGMENT_BYTES:
                     raise HTTPException(status_code=413, detail="Segment too large")
                 if other_bytes + size > settings.MEDIA_MAX_RECORDING_BYTES:
-                    raise HTTPException(status_code=413, detail="Clip exceeds the maximum recording size")
+                    raise HTTPException(
+                        status_code=413, detail="Clip exceeds the maximum recording size"
+                    )
                 digest.update(chunk)
                 out.write(chunk)
     except HTTPException:
         part.unlink(missing_ok=True)
         raise
-    except Exception as e:                        # includes the client disconnecting mid-upload
+    except Exception as e:  # includes the client disconnecting mid-upload
         part.unlink(missing_ok=True)
-        logger.info(f"Segment upload interrupted — vehicle {vehicle.id} clip={clip_id} seg={index}: {e!r}")
-        raise HTTPException(status_code=400, detail="Upload interrupted — resend this segment")
+        logger.info(
+            f"Segment upload interrupted — vehicle {vehicle.id} clip={clip_id} seg={index}: {e!r}"
+        )
+        raise HTTPException(
+            status_code=400, detail="Upload interrupted — resend this segment"
+        ) from e
 
     if size == 0:
         part.unlink(missing_ok=True)
@@ -210,7 +231,7 @@ async def upload_segment(
         part.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail="Checksum mismatch — resend this segment")
 
-    os.replace(part, final)                       # atomic: a segment is either complete or absent
+    os.replace(part, final)  # atomic: a segment is either complete or absent
 
     upload.bytes_received = other_bytes + size
     db.commit()
@@ -229,18 +250,24 @@ def finish_clip(
     upload = _get_upload(db, vehicle, clip_id, lock=True)
 
     if upload.status == ClipUploadStatus.complete:
-        return _status(db, vehicle, upload)       # repeat call — same answer, no second gallery item
+        return _status(db, vehicle, upload)  # repeat call — same answer, no second gallery item
     if upload.status == ClipUploadStatus.aborted:
-        raise HTTPException(status_code=409, detail="Clip was aborted — call POST /clips to start over")
+        raise HTTPException(
+            status_code=409, detail="Clip was aborted — call POST /clips to start over"
+        )
     if payload.total_segments > settings.CLIP_MAX_SEGMENTS:
-        raise HTTPException(status_code=422, detail=f"At most {settings.CLIP_MAX_SEGMENTS} segments per clip")
+        raise HTTPException(
+            status_code=422, detail=f"At most {settings.CLIP_MAX_SEGMENTS} segments per clip"
+        )
 
     present = clip_storage.list_segments(vehicle.id, clip_id)
     missing = [i for i in range(payload.total_segments) if i not in present]
 
     if missing and not payload.allow_partial:
         # Tell the camera exactly what to resend, then call finish again.
-        raise HTTPException(status_code=409, detail={"error": "missing_segments", "missing": missing})
+        raise HTTPException(
+            status_code=409, detail={"error": "missing_segments", "missing": missing}
+        )
 
     use_indexes = [i for i in range(payload.total_segments) if i in present]
     if not use_indexes:
@@ -252,63 +279,78 @@ def finish_clip(
 
     try:
         clip_storage.join_segments(
-            [clip_storage.segment_path(vehicle.id, clip_id, i) for i in use_indexes], joined,
+            [clip_storage.segment_path(vehicle.id, clip_id, i) for i in use_indexes],
+            joined,
         )
     except ClipJoinError as e:
         logger.error(f"Clip join failed — vehicle {vehicle.id} clip={clip_id}: {e}")
         upload.status = ClipUploadStatus.failed
         db.commit()
-        raise HTTPException(status_code=500, detail="Could not join the segments into a video")
+        raise HTTPException(
+            status_code=500, detail="Could not join the segments into a video"
+        ) from e
 
     final_size = joined.stat().st_size
     if final_size > settings.MEDIA_MAX_RECORDING_BYTES:
         joined.unlink(missing_ok=True)
         upload.status = ClipUploadStatus.failed
         db.commit()
-        raise HTTPException(status_code=413, detail="Joined clip exceeds the maximum recording size")
+        raise HTTPException(
+            status_code=413, detail="Joined clip exceeds the maximum recording size"
+        )
 
     duration = clip_storage.probe_duration(joined) or payload.duration_seconds
     dest = clip_storage.media_dir(vehicle.id) / f"{uuid.uuid4().hex}.mp4"
-    shutil.move(str(joined), str(dest))           # also works if the two folders are on different disks
+    shutil.move(str(joined), str(dest))  # also works if the two folders are on different disks
 
-    existing_count = db.query(CameraMedia).filter(
-        CameraMedia.vehicle_id == vehicle.id,
-        CameraMedia.media_type == CameraMediaType.recording,
-    ).count()
+    existing_count = (
+        db.query(CameraMedia)
+        .filter(
+            CameraMedia.vehicle_id == vehicle.id,
+            CameraMedia.media_type == CameraMediaType.recording,
+        )
+        .count()
+    )
 
     media = CameraMedia(
-        vehicle_id       = vehicle.id,
-        sequence_number  = existing_count + 1,
-        media_type       = CameraMediaType.recording,
-        file_path        = str(dest),
-        file_size_bytes  = final_size,
-        duration_seconds = duration,
-        source           = CameraMediaSource.event,
-        trigger_reason   = upload.trigger_reason,
-        client_clip_id   = upload.client_clip_id,
+        vehicle_id=vehicle.id,
+        sequence_number=existing_count + 1,
+        media_type=CameraMediaType.recording,
+        file_path=str(dest),
+        file_size_bytes=final_size,
+        duration_seconds=duration,
+        source=CameraMediaSource.event,
+        trigger_reason=upload.trigger_reason,
+        client_clip_id=upload.client_clip_id,
         # Sort and expire by when it HAPPENED, not when the upload finished.
-        created_at       = upload.recorded_at or datetime.now(timezone.utc),
+        created_at=upload.recorded_at or datetime.now(UTC),
     )
     db.add(media)
     db.flush()
 
     upload.media_id = media.id
-    upload.status   = ClipUploadStatus.complete
+    upload.status = ClipUploadStatus.complete
     db.commit()
     db.refresh(upload)
 
     clip_storage.remove_clip_dir(vehicle.id, clip_id)
     # Tell the app (WebSocket) and the owner (push) — after the response is sent,
     # and only on the first successful finish (repeats returned earlier).
-    background.add_task(notify_clip_ready, vehicle.id, {
-        "media_id":         media.id,
-        "source":           "event",
-        "trigger_reason":   media.trigger_reason,
-        "duration_seconds": media.duration_seconds,
-        "created_at":       media.created_at.isoformat() if media.created_at else None,
-    })
-    logger.info(f"Clip complete — vehicle {vehicle.id} clip={clip_id} media_id={media.id} "
-                f"segments={len(use_indexes)}/{payload.total_segments} size={final_size}")
+    background.add_task(
+        notify_clip_ready,
+        vehicle.id,
+        {
+            "media_id": media.id,
+            "source": "event",
+            "trigger_reason": media.trigger_reason,
+            "duration_seconds": media.duration_seconds,
+            "created_at": media.created_at.isoformat() if media.created_at else None,
+        },
+    )
+    logger.info(
+        f"Clip complete — vehicle {vehicle.id} clip={clip_id} media_id={media.id} "
+        f"segments={len(use_indexes)}/{payload.total_segments} size={final_size}"
+    )
     return _status(db, vehicle, upload)
 
 
@@ -321,7 +363,9 @@ def abort_clip(
 ):
     upload = _get_upload(db, vehicle, clip_id, lock=True)
     if upload.status == ClipUploadStatus.complete:
-        raise HTTPException(status_code=409, detail="Clip is already in the gallery — delete it from the app")
+        raise HTTPException(
+            status_code=409, detail="Clip is already in the gallery — delete it from the app"
+        )
     clip_storage.remove_clip_dir(vehicle.id, clip_id)
     upload.status = ClipUploadStatus.aborted
     db.commit()

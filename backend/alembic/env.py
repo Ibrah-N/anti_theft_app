@@ -1,25 +1,32 @@
-from logging.config import fileConfig
-
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-
-from alembic import context 
 import sys
+from logging.config import fileConfig
 from pathlib import Path
+
+from sqlalchemy import engine_from_config, pool
+
+from alembic import context
 
 # Add backend/ to path so we can import app
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+
+from app.core.config import settings
 from app.core.database import Base
-from app.models import User, Vehicle, Alert, GPSReading, DeviceToken, CameraMedia, ClipUpload  # noqa: F401
+from app.models import (  # noqa: F401
+    Alert,
+    CameraMedia,
+    ClipUpload,
+    DeviceToken,
+    GPSReading,
+    User,
+    Vehicle,
+)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
 
-# Use DATABASE_URL from backend/.env so the DB password lives in one place
-# (alembic.ini's sqlalchemy.url is only a fallback).
-from app.core.config import settings
+
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("%", "%%"))
 
 # Interpret the config file for Python logging.
@@ -77,9 +84,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()

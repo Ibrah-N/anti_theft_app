@@ -6,7 +6,7 @@
 # is empty until the camera next reports (the camera should also re-send its
 # state whenever it (re)connects to MQTT).
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 VALID_STATES = {"idle", "recording", "uploading", "streaming"}
 
@@ -20,13 +20,13 @@ def set_state(vehicle_id: int, data: dict) -> dict | None:
         return None
 
     clean = {
-        "state":      state,
-        "clip_id":    _short(data.get("clip_id"), 64),
-        "reason":     _short(data.get("reason"), 100),
-        "elapsed_s":  _num(data.get("elapsed_s")),
+        "state": state,
+        "clip_id": _short(data.get("clip_id"), 64),
+        "reason": _short(data.get("reason"), 100),
+        "elapsed_s": _num(data.get("elapsed_s")),
         "segments_uploaded": _int(data.get("segments_uploaded")),
-        "segments_total":    _int(data.get("segments_total")),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "segments_total": _int(data.get("segments_total")),
+        "updated_at": datetime.now(UTC).isoformat(),
     }
     _last[vehicle_id] = clean
     return clean
@@ -43,8 +43,10 @@ def clear(vehicle_id: int):
 def _short(v, n):
     return str(v)[:n] if v is not None else None
 
+
 def _num(v):
-    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+    return float(v) if isinstance(v, int | float) and not isinstance(v, bool) else None
+
 
 def _int(v):
     return int(v) if isinstance(v, int) and not isinstance(v, bool) else None

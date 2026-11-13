@@ -16,7 +16,11 @@ from tests.conftest import auth_headers_for
 def test_register_vehicle(client, user):
     response = client.post(
         "/api/vehicle/register",
-        json={"name": "Toyota Camry 2023", "reg_number": "TYC-2023-0847A", "device_id": "ESP32-0001"},
+        json={
+            "name": "Toyota Camry 2023",
+            "reg_number": "TYC-2023-0847A",
+            "device_id": "ESP32-0001",
+        },
         headers=auth_headers_for(user),
     )
 
@@ -59,7 +63,9 @@ def test_status_without_a_vehicle_is_404(client, user):
     ("endpoint", "topic_suffix"),
     [("/api/vehicle/engine", "cmd/engine"), ("/api/vehicle/fuel", "cmd/fuel")],
 )
-def test_command_is_published_to_the_vehicles_device(client, auth_headers, vehicle, mqtt, endpoint, topic_suffix):
+def test_command_is_published_to_the_vehicles_device(
+    client, auth_headers, vehicle, mqtt, endpoint, topic_suffix
+):
     response = client.post(endpoint, json={"state": False}, headers=auth_headers)
 
     assert response.status_code == 200, response.text
@@ -68,7 +74,9 @@ def test_command_is_published_to_the_vehicles_device(client, auth_headers, vehic
     assert mqtt.published[0][1]["state"] is False
 
 
-def test_engine_state_changes_only_after_device_confirms(client, auth_headers, vehicle, mqtt, db, broadcasts):
+def test_engine_state_changes_only_after_device_confirms(
+    client, auth_headers, vehicle, mqtt, db, broadcasts
+):
     client.post("/api/vehicle/engine", json={"state": True}, headers=auth_headers)
 
     # The command alone must not change the stored state.
@@ -80,7 +88,9 @@ def test_engine_state_changes_only_after_device_confirms(client, auth_headers, v
     assert client.get("/api/vehicle/status", headers=auth_headers).json()["engine_on"] is True
 
 
-def test_lock_state_changes_only_on_successful_ack(client, auth_headers, vehicle, mqtt, db, broadcasts):
+def test_lock_state_changes_only_on_successful_ack(
+    client, auth_headers, vehicle, mqtt, db, broadcasts
+):
     client.post("/api/vehicle/lock", json={"state": False}, headers=auth_headers)
 
     mqtt_handlers.handle_mqtt_message(

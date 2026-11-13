@@ -1,9 +1,8 @@
 # app/core/config.py
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from dotenv import load_dotenv
+import os
 
-load_dotenv()
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # Database
@@ -50,8 +49,14 @@ class Settings(BaseSettings):
 
     
     model_config = SettingsConfigDict(
-        env_file=".env",
+        # Which env file to read. Tests set VIGILX_ENV_FILE="" so no file is read
+        # at all and a developer's .env can never leak into the test run.
+        env_file=os.environ.get("VIGILX_ENV_FILE", ".env") or None,
         case_sensitive=True,
+        # The same .env on a laptop also holds simulator settings (BACKEND_URL,
+        # DEVICE_KEY, ...). Ignore keys this class doesn't define instead of
+        # refusing to start. Required settings still fail loudly when missing.
+        extra="ignore",
     )
 
 

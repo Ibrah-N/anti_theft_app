@@ -2,51 +2,50 @@
 # Run with: python3 simulator.py
 # Simulates ESP32 publishing sensor, GPS, and status data to Mosquitto broker
 
+import asyncio
+import base64
+import hashlib
+import hmac
+import json
+import logging
+import os
+import random
 import ssl
 import sys
-import json
-import time
-import random
-import logging
-import asyncio
 import threading
-import hmac
-import hashlib
-import base64
-from datetime import datetime, timezone
+import time
+from datetime import UTC, datetime
 
-import numpy as np
 import cv2
-from PIL import Image, ImageDraw
-from av import VideoFrame
+import numpy as np
+import paho.mqtt.client as mqtt
 from aiortc import (
-    RTCPeerConnection,
-    RTCSessionDescription,
     RTCConfiguration,
     RTCIceServer,
+    RTCPeerConnection,
+    RTCSessionDescription,
     VideoStreamTrack,
 )
-from aiortc.sdp import candidate_from_sdp
 from aiortc.mediastreams import MediaStreamError
-
-import paho.mqtt.client as mqtt
+from aiortc.sdp import candidate_from_sdp
+from av import VideoFrame
 from dotenv import load_dotenv
-import os
+from PIL import Image, ImageDraw
 
+from event_recorder import EventRecorder
 
 result = load_dotenv()
 print("DEBUG load_dotenv():", result, "cwd:", os.getcwd(), "file:", __file__)
 
-logging.basicConfig(level=logging.INFO,
-    format="%(asctime)s %(levelname)s — %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s — %(message)s")
 logger = logging.getLogger(__name__)
 
-MQTT_HOST     = os.getenv("MQTT_HOST")
+MQTT_HOST = os.getenv("MQTT_HOST")
 print("DEBUG MQTT_HOST:", repr(MQTT_HOST))
 
 # ── Config ────────────────────────────────────────────────────────────────────
-MQTT_HOST     = os.getenv("MQTT_HOST")
-MQTT_PORT     = int(os.getenv("MQTT_PORT", 8883))
+MQTT_HOST = os.getenv("MQTT_HOST")
+MQTT_PORT = int(os.getenv("MQTT_PORT", 8883))
 MQTT_USERNAME = os.getenv("MQTT_USERNAME")
 MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
 
@@ -55,7 +54,7 @@ MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
 # does via /vehicle/camera/ice-servers, so this simulator exercises the real
 # relay path instead of assuming a direct connection is always possible.
 TURN_SECRET = os.getenv("TURN_SECRET")
-TURN_HOST   = os.getenv("TURN_HOST", "vigilx.duckdns.org")
+TURN_HOST = os.getenv("TURN_HOST", "vigilx.duckdns.org")
 
 # ── Video source ──────────────────────────────────────────────────────────────
 # "webcam" = your real laptop camera (more realistic test — actual moving
@@ -64,7 +63,7 @@ TURN_HOST   = os.getenv("TURN_HOST", "vigilx.duckdns.org")
 # useful for headless/CI-style runs). Falls back to pattern automatically if
 # the webcam can't be opened.
 CAMERA_SOURCE = os.getenv("CAMERA_SOURCE", "webcam")
-CAMERA_INDEX  = int(os.getenv("CAMERA_INDEX", "0"))
+CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", "0"))
 
 # ── Device ID — must match vehicle.device_id in database ─────────────────────
 DEVICE_ID = "esp-001"
@@ -76,6 +75,7 @@ DEVICE_ID = "esp-001"
 # up on. Refuse it instead: don't change state, don't send an ACK.
 COMMAND_MAX_AGE_SECONDS = 10
 
+
 def _is_command_expired(payload: dict) -> bool:
     ts_str = payload.get("ts")
     if not ts_str:
@@ -84,24 +84,25 @@ def _is_command_expired(payload: dict) -> bool:
         sent_at = datetime.fromisoformat(ts_str)
     except ValueError:
         return False
-    age = (datetime.now(timezone.utc) - sent_at).total_seconds()
+    age = (datetime.now(UTC) - sent_at).total_seconds()
     return age > COMMAND_MAX_AGE_SECONDS
+
 
 # ── Topics ────────────────────────────────────────────────────────────────────
 TOPIC_SENSORS = f"sg/{DEVICE_ID}/sensors"
-TOPIC_GPS     = f"sg/{DEVICE_ID}/gps"
-TOPIC_STATUS  = f"sg/{DEVICE_ID}/status"
-TOPIC_ACK     = f"sg/{DEVICE_ID}/ack"
+TOPIC_GPS = f"sg/{DEVICE_ID}/gps"
+TOPIC_STATUS = f"sg/{DEVICE_ID}/status"
+TOPIC_ACK = f"sg/{DEVICE_ID}/ack"
 TOPIC_WEBRTC_OFFER = f"sg/{DEVICE_ID}/webrtc/offer"
-TOPIC_WEBRTC_ICE   = f"sg/{DEVICE_ID}/webrtc/ice"
+TOPIC_WEBRTC_ICE = f"sg/{DEVICE_ID}/webrtc/ice"
 
 TOPIC_CAMERA_STATE = f"sg/{DEVICE_ID}/camera/state"
 
 # ── Event recording (see event_recorder.py) ──────────────────────────────────
 # BACKEND_URL / DEVICE_KEY: where and how the "camera" uploads event clips.
 # EVENT_AUTO_TRIGGER=true: every simulated zone-open also starts an event clip.
-BACKEND_URL        = os.getenv("BACKEND_URL")        # e.g. https://vigilx.duckdns.org
-DEVICE_KEY         = os.getenv("DEVICE_KEY")         # vgx_... from POST /api/device/key
+BACKEND_URL = os.getenv("BACKEND_URL")  # e.g. https://vigilx.duckdns.org
+DEVICE_KEY = os.getenv("DEVICE_KEY")  # vgx_... from POST /api/device/key
 EVENT_AUTO_TRIGGER = os.getenv("EVENT_AUTO_TRIGGER", "false").lower() in ("1", "true", "yes")
 
 # ── GPS coordinates (Bara, KPK) ───────────────────────────────────────────────
@@ -110,16 +111,16 @@ BASE_LNG = 71.387076
 
 # ── Device state — only changes when command received from backend ────────────
 device_state = {
-    "engine_on":      False,
-    "fuel_flowing":   True,
-    "is_armed":       True,
-    "doors_locked":   True,
-    "mirror_fl":      True,
-    "mirror_fr":      True,
-    "mirror_rl":      True,
-    "mirror_rr":      True,
+    "engine_on": False,
+    "fuel_flowing": True,
+    "is_armed": True,
+    "doors_locked": True,
+    "mirror_fl": True,
+    "mirror_fr": True,
+    "mirror_rl": True,
+    "mirror_rr": True,
     "engine_started": False,
-    "ac_on":          False,
+    "ac_on": False,
 }
 
 # ── MQTT client setup ─────────────────────────────────────────────────────────
@@ -135,29 +136,31 @@ client.tls_set(
 
 
 # ── Event recorder ────────────────────────────────────────────────────────────
-from event_recorder import EventRecorder
+
 
 def publish_camera_state(state: dict):
     client.publish(TOPIC_CAMERA_STATE, json.dumps(state), qos=1)
 
+
 recorder = EventRecorder(DEVICE_ID, publish_camera_state, BACKEND_URL, DEVICE_KEY)
+
 
 # ── Callbacks ─────────────────────────────────────────────────────────────────
 def on_connect(client, userdata, flags, reason_code, properties):
     if reason_code == 0:
         logger.info("✅ Simulator connected to broker")
-        client.subscribe(f"sg/{DEVICE_ID}/cmd/engine",      qos=1)
-        client.subscribe(f"sg/{DEVICE_ID}/cmd/fuel",        qos=1)
+        client.subscribe(f"sg/{DEVICE_ID}/cmd/engine", qos=1)
+        client.subscribe(f"sg/{DEVICE_ID}/cmd/fuel", qos=1)
         client.subscribe(f"sg/{DEVICE_ID}/cmd/gps_request", qos=1)
-        client.subscribe(f"sg/{DEVICE_ID}/cmd/lock",        qos=1)
-        client.subscribe(f"sg/{DEVICE_ID}/cmd/mirror/+",    qos=1)
-        client.subscribe(f"sg/{DEVICE_ID}/cmd/start",       qos=1)
-        client.subscribe(f"sg/{DEVICE_ID}/cmd/ac",          qos=1)
-        client.subscribe(f"sg/{DEVICE_ID}/cmd/arm",         qos=1)
+        client.subscribe(f"sg/{DEVICE_ID}/cmd/lock", qos=1)
+        client.subscribe(f"sg/{DEVICE_ID}/cmd/mirror/+", qos=1)
+        client.subscribe(f"sg/{DEVICE_ID}/cmd/start", qos=1)
+        client.subscribe(f"sg/{DEVICE_ID}/cmd/ac", qos=1)
+        client.subscribe(f"sg/{DEVICE_ID}/cmd/arm", qos=1)
         client.subscribe(f"sg/{DEVICE_ID}/cmd/camera/start", qos=1)
-        client.subscribe(f"sg/{DEVICE_ID}/cmd/camera/stop",  qos=1)
+        client.subscribe(f"sg/{DEVICE_ID}/cmd/camera/stop", qos=1)
         client.subscribe(f"sg/{DEVICE_ID}/cmd/webrtc/answer", qos=1)
-        client.subscribe(f"sg/{DEVICE_ID}/cmd/webrtc/ice",    qos=1)
+        client.subscribe(f"sg/{DEVICE_ID}/cmd/webrtc/ice", qos=1)
         logger.info(f"Subscribed to command topics for device {DEVICE_ID}")
 
         recorder.start()
@@ -166,7 +169,7 @@ def on_connect(client, userdata, flags, reason_code, properties):
 
 
 def on_message(client, userdata, message):
-    topic   = message.topic
+    topic = message.topic
     payload = json.loads(message.payload.decode())
     logger.info(f"📥 Command received → {topic}: {payload}")
 
@@ -211,8 +214,8 @@ def on_message(client, userdata, message):
     # ── Mirror command — sg/{id}/cmd/mirror/{position} ───────────────────────
     elif "/cmd/mirror/" in topic:
         position = topic.rsplit("/", 1)[-1]  # "fl" | "fr" | "rl" | "rr"
-        state    = payload.get("state", True)
-        key      = f"mirror_{position}"
+        state = payload.get("state", True)
+        key = f"mirror_{position}"
         if key in device_state:
             device_state[key] = state
             logger.info(f"🪞 Mirror {position} → {'FOLDED' if state else 'UNFOLDED'}")
@@ -261,9 +264,7 @@ def on_message(client, userdata, message):
         )
 
     elif topic.endswith("/cmd/webrtc/ice"):
-        asyncio.run_coroutine_threadsafe(
-            _camera_ice(payload, payload.get("call_id")), camera_loop
-        )
+        asyncio.run_coroutine_threadsafe(_camera_ice(payload, payload.get("call_id")), camera_loop)
 
 
 def publish_ack(cmd: str, state: bool, success: bool = True):
@@ -282,6 +283,7 @@ def publish_ack(cmd: str, state: bool, success: bool = True):
 # the synchronous MQTT callbacks above.
 camera_loop = asyncio.new_event_loop()
 
+
 def _camera_loop_exception_handler(loop, context):
     # coturn deliberately refuses to relay to private/loopback peers
     # (denied-peer-ip in turnserver.conf), and aioice reports each refusal
@@ -294,10 +296,12 @@ def _camera_loop_exception_handler(loop, context):
         return
     loop.default_exception_handler(context)
 
+
 def _start_camera_loop():
     asyncio.set_event_loop(camera_loop)
     camera_loop.set_exception_handler(_camera_loop_exception_handler)
     camera_loop.run_forever()
+
 
 threading.Thread(target=_start_camera_loop, daemon=True, name="camera-loop").start()
 
@@ -307,8 +311,9 @@ _pc: RTCPeerConnection | None = None
 _current_call_id: str | None = None
 _stop_handle = None  # camera_loop.call_later() handle, for the auto-timeout
 _video_track = None  # explicit reference so we can release the webcam cleanly
-_remote_desc_set = False   # True once the app's answer has been applied
-_pending_ice: list = []    # app candidates that arrived before the answer
+_remote_desc_set = False  # True once the app's answer has been applied
+_pending_ice: list = []  # app candidates that arrived before the answer
+
 
 class TestPatternTrack(VideoStreamTrack):
     """
@@ -319,6 +324,7 @@ class TestPatternTrack(VideoStreamTrack):
     the hardware firmware exists; everything else in this file (signaling,
     TURN, session handling) stays the same.
     """
+
     kind = "video"
 
     def __init__(self):
@@ -341,6 +347,7 @@ class TestPatternTrack(VideoStreamTrack):
         frame.time_base = time_base
         return frame
 
+
 class WebcamTrack(VideoStreamTrack):
     """
     Your real laptop camera, captured via OpenCV — a much more realistic
@@ -348,6 +355,7 @@ class WebcamTrack(VideoStreamTrack):
     interface as TestPatternTrack, so swapping between them is just a
     matter of which one gets passed to pc.addTrack().
     """
+
     kind = "video"
 
     def __init__(self, camera_index: int = 0, width: int = 640, height: int = 480):
@@ -390,12 +398,13 @@ class WebcamTrack(VideoStreamTrack):
 
     def stop(self):
         super().stop()
-        with self._lock:          # waits for any in-flight read to finish
+        with self._lock:  # waits for any in-flight read to finish
             if self._released:
-                return            # already released — stop() can be called twice
+                return  # already released — stop() can be called twice
             self._released = True
             self._cap.release()
         logger.info("📷 Webcam released")
+
 
 def _make_video_track():
     """Real webcam if requested and available, else the synthetic pattern —
@@ -408,30 +417,34 @@ def _make_video_track():
             logger.warning(f"Could not open webcam ({e}) — falling back to test pattern")
     return TestPatternTrack()
 
-    
+
 def _turn_ice_config() -> RTCConfiguration:
     """Mint our own short-lived TURN credentials — same HMAC scheme as the
     backend's turn_credentials.py, so this simulator exercises the real
     relay path exactly like the app will."""
     if not TURN_SECRET:
         logger.warning("TURN_SECRET not set — falling back to STUN only")
-        return RTCConfiguration(iceServers=[
-            RTCIceServer(urls="stun:stun.l.google.com:19302"),
-        ])
+        return RTCConfiguration(
+            iceServers=[
+                RTCIceServer(urls="stun:stun.l.google.com:19302"),
+            ]
+        )
 
     username = str(int(time.time()) + 3600)
     credential = base64.b64encode(
         hmac.new(TURN_SECRET.encode(), username.encode(), hashlib.sha1).digest()
     ).decode()
 
-    return RTCConfiguration(iceServers=[
-        RTCIceServer(urls="stun:stun.l.google.com:19302"),
-        RTCIceServer(
-            urls=[f"turn:{TURN_HOST}:3478", f"turn:{TURN_HOST}:3478?transport=tcp"],
-            username=username,
-            credential=credential,
-        ),
-    ])
+    return RTCConfiguration(
+        iceServers=[
+            RTCIceServer(urls="stun:stun.l.google.com:19302"),
+            RTCIceServer(
+                urls=[f"turn:{TURN_HOST}:3478", f"turn:{TURN_HOST}:3478?transport=tcp"],
+                username=username,
+                credential=credential,
+            ),
+        ]
+    )
 
 
 async def _camera_start(call_id: str, finalize_recording: bool = True):
@@ -474,10 +487,16 @@ async def _camera_start(call_id: str, finalize_recording: bool = True):
     while _pc.iceGatheringState != "complete":
         await asyncio.sleep(0.1)
 
-    client.publish(TOPIC_WEBRTC_OFFER, json.dumps({
-        "sdp":     _pc.localDescription.sdp,
-        "call_id": call_id,
-    }), qos=1)
+    client.publish(
+        TOPIC_WEBRTC_OFFER,
+        json.dumps(
+            {
+                "sdp": _pc.localDescription.sdp,
+                "call_id": call_id,
+            }
+        ),
+        qos=1,
+    )
     logger.info(f"📷 WebRTC offer published — call_id={call_id}")
 
     _stop_handle = camera_loop.call_later(
@@ -504,7 +523,7 @@ async def _camera_ice(data: dict, call_id: str):
     if _pc is None or call_id != _current_call_id:
         return
     if not _remote_desc_set:
-        _pending_ice.append(data)   # hold until the answer has been applied
+        _pending_ice.append(data)  # hold until the answer has been applied
         return
     await _add_remote_candidate(data)
 
@@ -514,8 +533,12 @@ async def _add_remote_candidate(data: dict):
     if not candidate_str:
         return
     try:
-        candidate = candidate_from_sdp(candidate_str.split(":", 1)[-1] if candidate_str.startswith("candidate:") else candidate_str)
-        candidate.sdpMid        = data.get("sdpMid")
+        candidate = candidate_from_sdp(
+            candidate_str.split(":", 1)[-1]
+            if candidate_str.startswith("candidate:")
+            else candidate_str
+        )
+        candidate.sdpMid = data.get("sdpMid")
         candidate.sdpMLineIndex = data.get("sdpMLineIndex")
         await _pc.addIceCandidate(candidate)
     except Exception as e:
@@ -542,7 +565,7 @@ async def _camera_stop():
     if pc:
         await pc.close()
     logger.info(f"📷 WebRTC session ended — call_id={call_id}")
-    recorder.on_stream_ended()      # stream is over — waiting event clips may now upload
+    recorder.on_stream_ended()  # stream is over — waiting event clips may now upload
 
 
 # ── Wire callbacks ────────────────────────────────────────────────────────────
@@ -553,12 +576,12 @@ client.on_message = on_message
 # ── Data generators ───────────────────────────────────────────────────────────
 def generate_sensors(open_zone: str = None) -> dict:
     data = {
-        "zone_fl":     True,
-        "zone_fr":     True,
-        "zone_rl":     True,
-        "zone_rr":     True,
+        "zone_fl": True,
+        "zone_fr": True,
+        "zone_rl": True,
+        "zone_rr": True,
         "zone_bonnet": True,
-        "zone_trunk":  True,
+        "zone_trunk": True,
     }
     if open_zone and open_zone in data:
         data[open_zone] = False
@@ -567,11 +590,11 @@ def generate_sensors(open_zone: str = None) -> dict:
 
 def generate_gps() -> dict:
     return {
-        "latitude":  BASE_LAT + random.uniform(-0.001, 0.001),
+        "latitude": BASE_LAT + random.uniform(-0.001, 0.001),
         "longitude": BASE_LNG + random.uniform(-0.001, 0.001),
         "speed_kmh": round(random.uniform(0, 60), 1),
-        "city":      "Bara",
-        "address":   "Khyber Agency, KPK",
+        "city": "Bara",
+        "address": "Khyber Agency, KPK",
     }
 
 
@@ -579,10 +602,10 @@ def generate_status() -> dict:
     """Always reflects real device_state for engine, fuel, and arm state."""
     return {
         "battery_level": round(random.uniform(11.8, 12.8), 1),
-        "signal_bars":   random.randint(2, 4),
-        "engine_on":     device_state["engine_on"],
-        "fuel_flowing":  device_state["fuel_flowing"],
-        "is_armed":      device_state["is_armed"],
+        "signal_bars": random.randint(2, 4),
+        "engine_on": device_state["engine_on"],
+        "fuel_flowing": device_state["fuel_flowing"],
+        "is_armed": device_state["is_armed"],
     }
 
 
@@ -597,12 +620,13 @@ def run():
 
     # Manual trigger from the terminal: type  e  (or  e door_opened ) + Enter.
     def _stdin_listener():
-         for line in sys.stdin:
+        for line in sys.stdin:
             parts = line.strip().split(maxsplit=1)
             if parts and parts[0] in ("e", "event"):
                 reason = parts[1].replace(" ", "_") if len(parts) > 1 else "manual_test"
                 if recorder.trigger(reason):
                     logger.info(f"🎬 Event triggered from terminal: {reason}")
+
     threading.Thread(target=_stdin_listener, daemon=True, name="stdin-events").start()
     logger.info("Type 'e' + Enter to trigger an event recording")
 
@@ -639,9 +663,7 @@ def run():
             if step % 3 == 0:
                 # Randomly open a zone every 9th cycle to test alerts
                 if step % 3 == 0 and step > 0:
-                    open_zone = random.choice([
-                        "zone_fl", "zone_fr", "zone_trunk", "zone_bonnet"
-                    ])
+                    open_zone = random.choice(["zone_fl", "zone_fr", "zone_trunk", "zone_bonnet"])
                     logger.warning(f"🚨 Simulating zone open: {open_zone}")
                 else:
                     open_zone = None

@@ -1,10 +1,10 @@
 # app/services/media_cleanup.py
 
-import os
-import time
 import logging
+import os
 import threading
-from datetime import datetime, timezone, timedelta
+import time
+from datetime import UTC, datetime, timedelta
 
 from app.core.database import SessionLocal
 from app.models.camera_media import CameraMedia
@@ -12,8 +12,8 @@ from app.services.clip_storage import sweep_stale_clip_uploads
 
 logger = logging.getLogger(__name__)
 
-MEDIA_RETENTION_DAYS      = 30
-CLEANUP_INTERVAL_SECONDS  = 6 * 60 * 60  # every 6 hours
+MEDIA_RETENTION_DAYS = 30
+CLEANUP_INTERVAL_SECONDS = 6 * 60 * 60  # every 6 hours
 
 
 def delete_expired_media():
@@ -22,7 +22,7 @@ def delete_expired_media():
     older than the retention window. Runs in its own DB session since it
     executes outside any request's lifecycle.
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(days=MEDIA_RETENTION_DAYS)
+    cutoff = datetime.now(UTC) - timedelta(days=MEDIA_RETENTION_DAYS)
     db = SessionLocal()
     try:
         expired = db.query(CameraMedia).filter(CameraMedia.created_at < cutoff).all()
@@ -64,5 +64,3 @@ def start_cleanup_thread():
         f"Media cleanup thread started — retention={MEDIA_RETENTION_DAYS}d, "
         f"interval={CLEANUP_INTERVAL_SECONDS}s"
     )
-
-

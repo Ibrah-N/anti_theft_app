@@ -1,40 +1,38 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.dependencies import get_current_user
 from app.core.security import (
-    hash_password,
-    verify_password,
     create_access_token,
     create_refresh_token,
+    hash_password,
+    verify_password,
 )
-from app.models.user import User
-from app.schemas.auth import UserRegister, UserLogin, TokenResponse, UserResponse
-
-from app.core.dependencies import get_current_user
 from app.models.device_token import DeviceToken
-from pydantic import BaseModel
+from app.models.user import User
+from app.schemas.auth import TokenResponse, UserLogin, UserRegister, UserResponse
 
 router = APIRouter()
+
 
 # ── Register ──────────────────────────────────────────────────────────────────
 @router.post("/register", response_model=UserResponse, status_code=201)
 def register(payload: UserRegister, db: Session = Depends(get_db)):
-
     # Check email not already taken
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered"
         )
 
     # Create user
     user = User(
-        email           = payload.email,
-        phone           = payload.phone,
-        full_name       = payload.full_name,
-        hashed_password = hash_password(payload.password),
+        email=payload.email,
+        phone=payload.phone,
+        full_name=payload.full_name,
+        hashed_password=hash_password(payload.password),
     )
     db.add(user)
     db.commit()
@@ -45,26 +43,21 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
 # ── Login ─────────────────────────────────────────────────────────────────────
 @router.post("/login", response_model=TokenResponse)
 def login(payload: UserLogin, db: Session = Depends(get_db)):
-
     # Find user
     user = db.query(User).filter(User.email == payload.email).first()
     if not user or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password"
         )
 
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is disabled"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled")
 
     # Generate tokens
     token_data = {"sub": str(user.id)}
     return TokenResponse(
-        access_token  = create_access_token(token_data),
-        refresh_token = create_refresh_token(token_data),
+        access_token=create_access_token(token_data),
+        refresh_token=create_refresh_token(token_data),
     )
 
 
@@ -75,7 +68,7 @@ class RefreshPayload(BaseModel):
 
 @router.post("/refresh", response_model=TokenResponse)
 def refresh(payload: RefreshPayload, db: Session = Depends(get_db)):
-    from app.core.security import decode_token, create_access_token, create_refresh_token
+    from app.core.security import create_access_token, create_refresh_token, decode_token
 
     token_data = decode_token(payload.refresh_token)
     if token_data is None or token_data.get("type") != "refresh":
@@ -117,9 +110,7 @@ def register_fcm_token(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    existing = db.query(DeviceToken).filter(
-        DeviceToken.fcm_token == payload.fcm_token
-    ).first()
+    existing = db.query(DeviceToken).filter(DeviceToken.fcm_token == payload.fcm_token).first()
 
     if existing:
         existing.user_id = user.id

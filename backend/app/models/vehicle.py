@@ -1,59 +1,68 @@
-from datetime import datetime, timezone
-from sqlalchemy import String, Boolean, Float, Integer, ForeignKey, DateTime
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.core.database import Base
+
+if TYPE_CHECKING:  # imported only for type checkers; avoids a circular import
+    from app.models.alert import Alert
+    from app.models.user import User
+
 
 class Vehicle(Base):
     __tablename__ = "vehicles"
 
-    id:           Mapped[int]   = mapped_column(primary_key=True, index=True)
-    owner_id:     Mapped[int]   = mapped_column(ForeignKey("users.id"), nullable=False)
-    name:         Mapped[str]   = mapped_column(String(100), nullable=False)
-    reg_number:   Mapped[str]   = mapped_column(String(50), unique=True, nullable=False)
-    device_id:    Mapped[str]   = mapped_column(String(100), unique=True, nullable=False)
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    reg_number: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    device_id: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     # Secret the camera/firmware presents when uploading clips. Only a SHA-256
     # hash is stored; the plain key is shown to the owner exactly once when it
     # is created or rotated. NULL = this vehicle's device cannot upload yet.
-    device_key_hash:       Mapped[str | None]      = mapped_column(String(64), nullable=True)
-    device_key_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    device_key_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    device_key_created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Live state — updated by MQTT in Step 3
-    engine_on:    Mapped[bool]  = mapped_column(Boolean, default=False)
-    fuel_flowing: Mapped[bool]  = mapped_column(Boolean, default=True)
-    speed_kmh:    Mapped[float] = mapped_column(Float, default=0.0)
-    battery_level:Mapped[float] = mapped_column(Float, default=12.6)
-    signal_bars:  Mapped[int]   = mapped_column(Integer, default=3)
+    engine_on: Mapped[bool] = mapped_column(Boolean, default=False)
+    fuel_flowing: Mapped[bool] = mapped_column(Boolean, default=True)
+    speed_kmh: Mapped[float] = mapped_column(Float, default=0.0)
+    battery_level: Mapped[float] = mapped_column(Float, default=12.6)
+    signal_bars: Mapped[int] = mapped_column(Integer, default=3)
 
     # Zone states — True = closed/secure, False = open/alert
-    zone_fl:      Mapped[bool]  = mapped_column(Boolean, default=True)  # front left
-    zone_fr:      Mapped[bool]  = mapped_column(Boolean, default=True)  # front right
-    zone_rl:      Mapped[bool]  = mapped_column(Boolean, default=True)  # rear left
-    zone_rr:      Mapped[bool]  = mapped_column(Boolean, default=True)  # rear right
-    zone_bonnet:  Mapped[bool]  = mapped_column(Boolean, default=True)
-    zone_trunk:   Mapped[bool]  = mapped_column(Boolean, default=True)
+    zone_fl: Mapped[bool] = mapped_column(Boolean, default=True)  # front left
+    zone_fr: Mapped[bool] = mapped_column(Boolean, default=True)  # front right
+    zone_rl: Mapped[bool] = mapped_column(Boolean, default=True)  # rear left
+    zone_rr: Mapped[bool] = mapped_column(Boolean, default=True)  # rear right
+    zone_bonnet: Mapped[bool] = mapped_column(Boolean, default=True)
+    zone_trunk: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Vehicle controls — updated only after device ACK confirms success
-    is_armed:       Mapped[bool] = mapped_column(Boolean, default=True)
-    doors_locked:   Mapped[bool] = mapped_column(Boolean, default=True)
-    mirror_fl:      Mapped[bool] = mapped_column(Boolean, default=True)  # True = folded
-    mirror_fr:      Mapped[bool] = mapped_column(Boolean, default=True)
-    mirror_rl:      Mapped[bool] = mapped_column(Boolean, default=True)
-    mirror_rr:      Mapped[bool] = mapped_column(Boolean, default=True)
+    is_armed: Mapped[bool] = mapped_column(Boolean, default=True)
+    doors_locked: Mapped[bool] = mapped_column(Boolean, default=True)
+    mirror_fl: Mapped[bool] = mapped_column(Boolean, default=True)  # True = folded
+    mirror_fr: Mapped[bool] = mapped_column(Boolean, default=True)
+    mirror_rl: Mapped[bool] = mapped_column(Boolean, default=True)
+    mirror_rr: Mapped[bool] = mapped_column(Boolean, default=True)
     engine_started: Mapped[bool] = mapped_column(Boolean, default=False)  # starter motor relay
-    ac_on:          Mapped[bool] = mapped_column(Boolean, default=False)
+    ac_on: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    created_at:   Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
-    updated_at:   Mapped[datetime] = mapped_column(
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc)
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
     # Relationships
-    owner:  Mapped["User"]        = relationship(back_populates="vehicles")
+    owner: Mapped["User"] = relationship(back_populates="vehicles")
     alerts: Mapped[list["Alert"]] = relationship(back_populates="vehicle")
 
     def __repr__(self) -> str:

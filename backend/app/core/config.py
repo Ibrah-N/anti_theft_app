@@ -4,6 +4,7 @@ import os
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
     # Database
     DATABASE_URL: str
@@ -19,35 +20,34 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # MQTT
-    MQTT_HOST:      str
-    MQTT_PORT:      int = 8883
-    MQTT_USERNAME:  str
-    MQTT_PASSWORD:  str
+    MQTT_HOST: str
+    MQTT_PORT: int = 8883
+    MQTT_USERNAME: str
+    MQTT_PASSWORD: str
     MQTT_CLIENT_ID: str = "smartguard_backend"
 
-        # TURN (coturn) — must match static-auth-secret in /etc/turnserver.conf
+    # TURN (coturn) — must match static-auth-secret in /etc/turnserver.conf
     # No default here on purpose — this must come from .env only. (A real
     # secret was previously hardcoded here as a default and got committed to
     # git; treat that value as burned and rotate it again in
     # /etc/turnserver.conf + every .env that references it.)
     TURN_SECRET: str
-    TURN_HOST:   str = "vigilx.duckdns.org"
+    TURN_HOST: str = "vigilx.duckdns.org"
 
     # Camera media (snapshots / recordings) — uploaded by whichever side
     # currently holds the WebRTC video (the app today, the camera firmware
     # later), since video no longer passes through this backend at all.
-    MEDIA_ROOT:                str = "/var/vigilx-media"
-    MEDIA_MIN_FREE_BYTES:      int = 500 * 1024 * 1024   # refuse uploads below 500 MB free
-    MEDIA_MAX_SNAPSHOT_BYTES:  int = 5 * 1024 * 1024     # 5 MB
-    MEDIA_MAX_RECORDING_BYTES: int = 200 * 1024 * 1024   # matches the 5-min session cap
+    MEDIA_ROOT: str = "/var/vigilx-media"
+    MEDIA_MIN_FREE_BYTES: int = 500 * 1024 * 1024  # refuse uploads below 500 MB free
+    MEDIA_MAX_SNAPSHOT_BYTES: int = 5 * 1024 * 1024  # 5 MB
+    MEDIA_MAX_RECORDING_BYTES: int = 200 * 1024 * 1024  # matches the 5-min session cap
 
     # Event clips uploaded by the camera in numbered segments
-    CLIP_MAX_SECONDS:          int = 300                 # 5 minutes, same as the firmware cap
-    CLIP_MAX_SEGMENTS:         int = 40                  # sanity limit on pieces per clip
-    CLIP_MAX_SEGMENT_BYTES:    int = 30 * 1024 * 1024    # 30 MB per piece
-    CLIP_STALE_HOURS:          int = 24                  # abandoned partial uploads are deleted after this
+    CLIP_MAX_SECONDS: int = 300  # 5 minutes, same as the firmware cap
+    CLIP_MAX_SEGMENTS: int = 40  # sanity limit on pieces per clip
+    CLIP_MAX_SEGMENT_BYTES: int = 30 * 1024 * 1024  # 30 MB per piece
+    CLIP_STALE_HOURS: int = 24  # abandoned partial uploads are deleted after this
 
-    
     model_config = SettingsConfigDict(
         # Which env file to read. Tests set VIGILX_ENV_FILE="" so no file is read
         # at all and a developer's .env can never leak into the test run.
@@ -58,7 +58,6 @@ class Settings(BaseSettings):
         # refusing to start. Required settings still fail loudly when missing.
         extra="ignore",
     )
-
 
 
 # Single instance imported everywhere

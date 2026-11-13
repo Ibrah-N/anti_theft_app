@@ -30,7 +30,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from fractions import Fraction
 from pathlib import Path
 
@@ -40,34 +40,52 @@ from PIL import Image, ImageDraw
 
 logger = logging.getLogger("event_recorder")
 
-FPS    = 10
-WIDTH  = 320
+FPS = 10
+WIDTH = 320
 HEIGHT = 240
 
 
 class EventRecorder:
-    def __init__(self, device_id: str, publish_state, backend_url: str | None, device_key: str | None,
-                 sd_dir: str | None = None, clip_seconds: float | None = None,
-                 segment_seconds: float | None = None, cooldown_seconds: float | None = None,
-                 realtime: bool = True):
-        self.device_id   = device_id
-        self._publish    = publish_state          # callable(dict) -> publishes camera/state on MQTT
+    def __init__(
+        self,
+        device_id: str,
+        publish_state,
+        backend_url: str | None,
+        device_key: str | None,
+        sd_dir: str | None = None,
+        clip_seconds: float | None = None,
+        segment_seconds: float | None = None,
+        cooldown_seconds: float | None = None,
+        realtime: bool = True,
+    ):
+        self.device_id = device_id
+        self._publish = publish_state  # callable(dict) -> publishes camera/state on MQTT
         self.backend_url = (backend_url or "").rstrip("/")
-        self.device_key  = device_key or ""
-        self.sd_dir      = Path(sd_dir or os.getenv("SD_DIR", "./sim_sdcard"))
-        self.clip_seconds    = float(clip_seconds    if clip_seconds    is not None else os.getenv("EVENT_CLIP_SECONDS", 40))
-        self.segment_seconds = float(segment_seconds if segment_seconds is not None else os.getenv("EVENT_SEGMENT_SECONDS", 10))
-        self.cooldown        = float(cooldown_seconds if cooldown_seconds is not None else os.getenv("EVENT_COOLDOWN_SECONDS", 60))
+        self.device_key = device_key or ""
+        self.sd_dir = Path(sd_dir or os.getenv("SD_DIR", "./sim_sdcard"))
+        self.clip_seconds = float(
+            clip_seconds if clip_seconds is not None else os.getenv("EVENT_CLIP_SECONDS", 40)
+        )
+        self.segment_seconds = float(
+            segment_seconds
+            if segment_seconds is not None
+            else os.getenv("EVENT_SEGMENT_SECONDS", 10)
+        )
+        self.cooldown = float(
+            cooldown_seconds
+            if cooldown_seconds is not None
+            else os.getenv("EVENT_COOLDOWN_SECONDS", 60)
+        )
         self.realtime = realtime
         self.sd_dir.mkdir(parents=True, exist_ok=True)
 
-        self._lock       = threading.Lock()
-        self._streaming  = False
-        self._recording  = False
+        self._lock = threading.Lock()
+        self._streaming = False
+        self._recording = False
         self._uploading_clip: str | None = None
         self._stop_recording = threading.Event()
-        self._wake_uploader  = threading.Event()
-        self._last_event_at  = 0.0
+        self._wake_uploader = threading.Event()
+        self._last_event_at = 0.0
         self._rec_thread: threading.Thread | None = None
         self._closed = False
         self._recovered = False
@@ -113,9 +131,10 @@ class EventRecorder:
             self._last_event_at = time.time()
             self._stop_recording.clear()
 
-        clip_id = f"evt-{datetime.now(timezone.utc):%Y%m%d%H%M%S}-{uuid.uuid4().hex[:8]}"
+        clip_id = f"evt-{datetime.now(UTC):%Y%m%d%H%M%S}-{uuid.uuid4().hex[:8]}"
         self._rec_thread = threading.Thread(
-            target=self._record, args=(clip_id, reason), daemon=True, name="event-recorder")
+            target=self._record, args=(clip_id, reason), daemon=True, name="event-recorder"
+        )
         self._rec_thread.start()
         return True
 
@@ -161,15 +180,23 @@ class EventRecorder:
         m.update(updates)
         tmp = d / "manifest.json.tmp"
         tmp.write_text(json.dumps(m))
-        os.replace(tmp, p)                  # atomic, like a safe SD write
+        os.replace(tmp, p)  # atomic, like a safe SD write
         return m
 
     def _record(self, clip_id: str, reason: str):
         d = self._clip_dir(clip_id)
         d.mkdir(parents=True, exist_ok=True)
-        recorded_at = datetime.now(timezone.utc).isoformat()
-        self._write_manifest(clip_id, clip_id=clip_id, reason=reason, recorded_at=recorded_at,
-                             finalized=False, segments=0, duration=0.0, uploaded=False)
+        recorded_at = datetime.now(UTC).isoformat()
+        self._write_manifest(
+            clip_id,
+            clip_id=clip_id,
+            reason=reason,
+            recorded_at=recorded_at,
+            finalized=False,
+            segments=0,
+            duration=0.0,
+            uploaded=False,
+        )
         logger.info(f"🔴 Recording started — clip={clip_id} reason={reason}")
         self._report("recording", clip_id=clip_id, reason=reason, elapsed_s=0)
 
@@ -178,10 +205,17 @@ class EventRecorder:
         try:
             while elapsed < self.clip_seconds and not self._stop_recording.is_set():
                 seg_len = min(self.segment_seconds, self.clip_seconds - elapsed)
-                frames = self._write_segment(d / f"seg_{seg_index:05d}.ts", seg_len, reason,
-                                             frame_no, elapsed, clip_id, last_report)
+                frames = self._write_segment(
+                    d / f"seg_{seg_index:05d}.ts",
+                    seg_len,
+                    reason,
+                    frame_no,
+                    elapsed,
+                    clip_id,
+                    last_report,
+                )
                 frame_no += frames
-                elapsed  += frames / FPS
+                elapsed += frames / FPS
                 if frames == 0:
                     break
                 seg_index += 1
@@ -190,16 +224,28 @@ class EventRecorder:
         except Exception as e:
             logger.error(f"Recording error — clip={clip_id}: {e!r}")
         finally:
-            self._write_manifest(clip_id, finalized=True, segments=seg_index, duration=round(elapsed, 2))
+            self._write_manifest(
+                clip_id, finalized=True, segments=seg_index, duration=round(elapsed, 2)
+            )
             with self._lock:
                 self._recording = False
-            logger.info(f"⏹️  Recording finished — clip={clip_id} segments={seg_index} {elapsed:.1f}s")
+            logger.info(
+                f"⏹️  Recording finished — clip={clip_id} segments={seg_index} {elapsed:.1f}s"
+            )
             if not self._streaming:
                 self._report("idle")
             self._wake_uploader.set()
 
-    def _write_segment(self, path: Path, seconds: float, reason: str, frame_no: int,
-                       elapsed: float, clip_id: str, last_report: float) -> int:
+    def _write_segment(
+        self,
+        path: Path,
+        seconds: float,
+        reason: str,
+        frame_no: int,
+        elapsed: float,
+        clip_id: str,
+        last_report: float,
+    ) -> int:
         """Encode up to `seconds` of video into one MPEG-TS file. Stops early on stop request."""
         container = av.open(str(path) + ".part", mode="w", format="mpegts")
         stream = container.add_stream("libx264", rate=FPS)
@@ -221,7 +267,9 @@ class EventRecorder:
                 n += 1
                 if elapsed + n / FPS - last_report >= 5:
                     last_report = elapsed + n / FPS
-                    self._report("recording", clip_id=clip_id, reason=reason, elapsed_s=round(last_report, 1))
+                    self._report(
+                        "recording", clip_id=clip_id, reason=reason, elapsed_s=round(last_report, 1)
+                    )
                 if self.realtime:
                     delay = t0 + n / FPS - time.time()
                     if delay > 0:
@@ -243,7 +291,7 @@ class EventRecorder:
         x = (i * 4) % (WIDTH - 40)
         dr.rectangle([x, 90, x + 40, 150], fill=(220, 60, 60))
         dr.text((8, 8), f"EVENT: {reason}", fill=(255, 255, 255))
-        dr.text((8, 24), datetime.now(timezone.utc).strftime("%H:%M:%S UTC"), fill=(180, 220, 255))
+        dr.text((8, 24), datetime.now(UTC).strftime("%H:%M:%S UTC"), fill=(180, 220, 255))
         dr.text((8, HEIGHT - 20), f"frame {i}", fill=(150, 150, 150))
         return np.asarray(img)
 
@@ -251,7 +299,7 @@ class EventRecorder:
     def _recover_unfinished(self):
         for d in sorted(self.sd_dir.glob("evt-*")):
             for part in d.glob("*.part"):
-                part.unlink(missing_ok=True)          # half-written segment — unusable
+                part.unlink(missing_ok=True)  # half-written segment — unusable
             mf = d / "manifest.json"
             if not mf.exists():
                 shutil.rmtree(d, ignore_errors=True)
@@ -291,14 +339,20 @@ class EventRecorder:
                 if not ok:
                     time.sleep(backoff)
                     backoff = min(backoff * 2, 60)
-                    self._wake_uploader.set()      # retry later
+                    self._wake_uploader.set()  # retry later
                     break
                 backoff = 5
             if did_work and not self._streaming and not self._recording:
                 self._report("idle")
 
-    def _http(self, method: str, path: str, body: bytes | None = None, headers: dict | None = None,
-              timeout: float = 60):
+    def _http(
+        self,
+        method: str,
+        path: str,
+        body: bytes | None = None,
+        headers: dict | None = None,
+        timeout: float = 60,
+    ):
         req = urllib.request.Request(self.backend_url + path, data=body, method=method)
         req.add_header("X-Device-Id", self.device_id)
         req.add_header("X-Device-Key", self.device_key)
@@ -325,9 +379,18 @@ class EventRecorder:
         self._uploading_clip = clip_id
         logger.info(f"⬆️  Uploading clip {clip_id} — {total} segments")
         try:
-            code, body = self._http("POST", "/api/device/clips", json.dumps({
-                "client_clip_id": clip_id, "trigger_reason": m.get("reason"),
-                "recorded_at": m.get("recorded_at")}).encode(), {"Content-Type": "application/json"})
+            code, body = self._http(
+                "POST",
+                "/api/device/clips",
+                json.dumps(
+                    {
+                        "client_clip_id": clip_id,
+                        "trigger_reason": m.get("reason"),
+                        "recorded_at": m.get("recorded_at"),
+                    }
+                ).encode(),
+                {"Content-Type": "application/json"},
+            )
             if code == 401:
                 logger.error("⬆️  Backend rejected the device key (401) — check DEVICE_KEY")
                 return False
@@ -341,24 +404,44 @@ class EventRecorder:
             for i, f in enumerate(segs):
                 if i in have:
                     continue
-                if self._streaming or self._closed:                 # stream-first: pause, resume later
+                if self._streaming or self._closed:  # stream-first: pause, resume later
                     logger.info("⬆️  Upload paused — stream opened")
                     return True
                 data = f.read_bytes()
-                code, body = self._http("PUT", f"/api/device/clips/{clip_id}/segments/{i}", data, {
-                    "Content-Type": "application/octet-stream",
-                    "X-Segment-SHA256": hashlib.sha256(data).hexdigest()}, timeout=120)
+                code, body = self._http(
+                    "PUT",
+                    f"/api/device/clips/{clip_id}/segments/{i}",
+                    data,
+                    {
+                        "Content-Type": "application/octet-stream",
+                        "X-Segment-SHA256": hashlib.sha256(data).hexdigest(),
+                    },
+                    timeout=120,
+                )
                 if code != 200:
                     logger.warning(f"⬆️  segment {i} failed {code}: {body}")
                     return False
-                self._report("uploading", clip_id=clip_id, reason=m.get("reason"),
-                             segments_uploaded=i + 1, segments_total=total)
+                self._report(
+                    "uploading",
+                    clip_id=clip_id,
+                    reason=m.get("reason"),
+                    segments_uploaded=i + 1,
+                    segments_total=total,
+                )
 
-            code, body = self._http("POST", f"/api/device/clips/{clip_id}/finish", json.dumps({
-                "total_segments": total, "duration_seconds": m.get("duration")}).encode(),
-                {"Content-Type": "application/json"}, timeout=240)
+            code, body = self._http(
+                "POST",
+                f"/api/device/clips/{clip_id}/finish",
+                json.dumps(
+                    {"total_segments": total, "duration_seconds": m.get("duration")}
+                ).encode(),
+                {"Content-Type": "application/json"},
+                timeout=240,
+            )
             if code == 409 and isinstance(body.get("detail"), dict):
-                logger.warning(f"⬆️  server is missing {body['detail'].get('missing')} — will resend")
+                logger.warning(
+                    f"⬆️  server is missing {body['detail'].get('missing')} — will resend"
+                )
                 return False
             if code != 200:
                 logger.warning(f"⬆️  finish failed {code}: {body}")
@@ -372,7 +455,7 @@ class EventRecorder:
             self._uploading_clip = None
 
     def _mark_done(self, d: Path) -> bool:
-        shutil.rmtree(d, ignore_errors=True)          # free the SD card
+        shutil.rmtree(d, ignore_errors=True)  # free the SD card
         return True
 
     # ── State reporting ──────────────────────────────────────────────────────

@@ -24,7 +24,9 @@ def backend_mqtt(monkeypatch):
     monkeypatch.setattr(settings, "MQTT_CLIENT_ID", f"backend-test-{uuid.uuid4().hex[:8]}")
     service = MQTTService()
     received: queue.Queue = queue.Queue()
-    service.set_db_callback(lambda msg_type, device_id, data: received.put((msg_type, device_id, data)))
+    service.set_db_callback(
+        lambda msg_type, device_id, data: received.put((msg_type, device_id, data))
+    )
 
     # The backend subscribes to 7 topics on connect. Wait until the broker has
     # confirmed all of them; otherwise a device message sent right away could

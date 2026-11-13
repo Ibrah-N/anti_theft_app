@@ -38,7 +38,9 @@ def test_door_opening_creates_an_alert(client, auth_headers, vehicle, broadcasts
     assert alert_messages[0]["payload"]["title"] == "Front Left Door Opened"
 
 
-def test_door_already_open_does_not_create_a_second_alert(client, auth_headers, vehicle, broadcasts):
+def test_door_already_open_does_not_create_a_second_alert(
+    client, auth_headers, vehicle, broadcasts
+):
     mqtt_handlers.handle_mqtt_message("sensors", vehicle.device_id, {"zone_fl": False})
     mqtt_handlers.handle_mqtt_message("sensors", vehicle.device_id, {"zone_fl": False})
 
@@ -118,7 +120,9 @@ def test_cannot_list_another_owners_alerts(client, vehicle, make_alert, make_use
     assert data["total"] == 0
 
 
-def test_cannot_mark_another_owners_alert_read(client, db, vehicle, make_alert, make_user, make_vehicle):
+def test_cannot_mark_another_owners_alert_read(
+    client, db, vehicle, make_alert, make_user, make_vehicle
+):
     alert = make_alert(vehicle)
     stranger = make_user()
     make_vehicle(stranger)

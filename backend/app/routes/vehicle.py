@@ -1,38 +1,27 @@
+import logging
+import os
+import shutil
+import uuid
+from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import get_db
-from app.models.vehicle import Vehicle
-from app.models.alert import Alert, AlertCategory, AlertSeverity
-
 from app.core.dependencies import get_current_user, get_current_vehicle
+from app.models.camera_media import CameraMedia, CameraMediaType
 from app.models.user import User
 from app.models.vehicle import Vehicle
-
+from app.schemas.camera_media import CameraMediaListResponse, CameraMediaResponse
+from app.schemas.vehicle import CommandPayload, VehicleRegister, VehicleResponse
+from app.services import camera_state, turn_credentials, webrtc_signaling
 from app.services.mqtt_service import mqtt_service
-from app.services import webrtc_signaling
-from app.services import turn_credentials
-from app.services import camera_state
-
-import os
-import uuid
-import shutil
-from pathlib import Path
-from fastapi import UploadFile, File, Form
-from fastapi.responses import FileResponse
-from app.core.config import settings
-from app.models.camera_media import CameraMedia, CameraMediaType
-from app.schemas.camera_media import CameraMediaResponse, CameraMediaListResponse
-
-from app.schemas.vehicle import VehicleResponse, VehicleRegister, CommandPayload
 
 router = APIRouter()
-
-
-
-
+logger = logging.getLogger(__name__)
 
 
 # ── Register vehicle ──────────────────────────────────────────────────────────
@@ -47,10 +36,10 @@ def register_vehicle(
         raise HTTPException(status_code=400, detail="Device ID already registered")
 
     vehicle = Vehicle(
-        owner_id   = user.id,
-        name       = payload.name,
-        reg_number = payload.reg_number,
-        device_id  = payload.device_id,
+        owner_id=user.id,
+        name=payload.name,
+        reg_number=payload.reg_number,
+        device_id=payload.device_id,
     )
     db.add(vehicle)
     db.commit()
@@ -62,6 +51,7 @@ def register_vehicle(
 @router.get("/status", response_model=VehicleResponse)
 def get_status(vehicle: Vehicle = Depends(get_current_vehicle)):
     return vehicle
+
 
 # ── Engine control ────────────────────────────────────────────────────────────
 @router.post("/engine", response_model=dict)
@@ -75,7 +65,7 @@ def control_engine(
             status_code=409,
             detail="Vehicle is disarmed — arm it to use this control",
         )
-        
+
     if not mqtt_service.is_connected:
         raise HTTPException(status_code=503, detail="Device not connected")
 
@@ -83,9 +73,9 @@ def control_engine(
     mqtt_service.publish_engine_command(vehicle.device_id, payload.state)
 
     return {
-        "message": f"Engine command sent to device",
-        "state":   payload.state,
-        "device":  vehicle.device_id,
+        "message": "Engine command sent to device",
+        "state": payload.state,
+        "device": vehicle.device_id,
     }
 
 
@@ -108,9 +98,9 @@ def control_fuel(
     mqtt_service.publish_fuel_command(vehicle.device_id, payload.state)
 
     return {
-        "message": f"Fuel command sent to device",
-        "state":   payload.state,
-        "device":  vehicle.device_id,
+        "message": "Fuel command sent to device",
+        "state": payload.state,
+        "device": vehicle.device_id,
     }
 
 
@@ -129,8 +119,8 @@ def control_lock(
 
     return {
         "message": "Lock command sent to device",
-        "state":   payload.state,
-        "device":  vehicle.device_id,
+        "state": payload.state,
+        "device": vehicle.device_id,
     }
 
 
@@ -151,8 +141,8 @@ def control_mirror(
     return {
         "message": f"Mirror {position} command sent to device",
         "position": position,
-        "state":   payload.state,
-        "device":  vehicle.device_id,
+        "state": payload.state,
+        "device": vehicle.device_id,
     }
 
 
@@ -176,8 +166,8 @@ def control_start(
 
     return {
         "message": "Start command sent to device",
-        "state":   payload.state,
-        "device":  vehicle.device_id,
+        "state": payload.state,
+        "device": vehicle.device_id,
     }
 
 
@@ -188,7 +178,6 @@ def control_ac(
     vehicle: Vehicle = Depends(get_current_vehicle),
     db: Session = Depends(get_db),
 ):
-
     if not vehicle.is_armed:
         raise HTTPException(
             status_code=409,
@@ -202,8 +191,8 @@ def control_ac(
 
     return {
         "message": "AC command sent to device",
-        "state":   payload.state,
-        "device":  vehicle.device_id,
+        "state": payload.state,
+        "device": vehicle.device_id,
     }
 
 
@@ -221,8 +210,8 @@ def control_arm(
 
     return {
         "message": "Arm command sent to device",
-        "state":   payload.state,
-        "device":  vehicle.device_id,
+        "state": payload.state,
+        "device": vehicle.device_id,
     }
 
 
@@ -243,9 +232,9 @@ def start_camera(
     mqtt_service.publish_camera_start_command(vehicle.device_id, call_id)
 
     return {
-        "message":     "Camera start command sent to device",
-        "call_id":     call_id,
-        "device":      vehicle.device_id,
+        "message": "Camera start command sent to device",
+        "call_id": call_id,
+        "device": vehicle.device_id,
         "ice_servers": turn_credentials.get_ice_servers(),
     }
 
@@ -262,7 +251,7 @@ def get_camera_state(
     """
     return {"camera": camera_state.get_state(vehicle.id)}
 
-    
+
 @router.get("/camera/ice-servers", response_model=dict)
 def get_ice_servers(
     vehicle: Vehicle = Depends(get_current_vehicle),
@@ -288,7 +277,7 @@ def stop_camera(
 
     return {
         "message": "Camera stop command sent to device",
-        "device":  vehicle.device_id,
+        "device": vehicle.device_id,
     }
 
 
@@ -299,6 +288,7 @@ def stop_camera(
 # holding the video (the app today; the camera firmware later, once it
 # exists) captures locally and uploads the finished file here. One generic
 # store, usable by either side, keyed only by vehicle ownership.
+
 
 def _media_dir(vehicle_id: int) -> Path:
     d = Path(settings.MEDIA_ROOT) / str(vehicle_id)
@@ -355,20 +345,25 @@ async def upload_camera_media(
                     raise HTTPException(
                         status_code=413,
                         detail=f"File exceeds the {max_bytes // (1024 * 1024)} MB "
-                               f"limit for {media_type.value}",
+                        f"limit for {media_type.value}",
                     )
                 out.write(chunk)
     except HTTPException:
         dest_path.unlink(missing_ok=True)
         raise
-    except Exception:
+    except Exception as e:
         dest_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=500, detail="Upload failed")
+        logger.exception(f"Media upload failed — vehicle {vehicle.id}")
+        raise HTTPException(status_code=500, detail="Upload failed") from e
 
-    existing_count = db.query(CameraMedia).filter(
-        CameraMedia.vehicle_id == vehicle.id,
-        CameraMedia.media_type == media_type,
-    ).count()
+    existing_count = (
+        db.query(CameraMedia)
+        .filter(
+            CameraMedia.vehicle_id == vehicle.id,
+            CameraMedia.media_type == media_type,
+        )
+        .count()
+    )
 
     media = CameraMedia(
         vehicle_id=vehicle.id,
@@ -397,12 +392,7 @@ def list_camera_media(
         query = query.filter(CameraMedia.media_type == media_type)
 
     total = query.count()
-    items = (
-        query.order_by(CameraMedia.created_at.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
+    items = query.order_by(CameraMedia.created_at.desc()).offset(offset).limit(limit).all()
     return CameraMediaListResponse(total=total, items=items)
 
 
@@ -412,10 +402,14 @@ def download_camera_media(
     vehicle: Vehicle = Depends(get_current_vehicle),
     db: Session = Depends(get_db),
 ):
-    media = db.query(CameraMedia).filter(
-        CameraMedia.id == media_id,
-        CameraMedia.vehicle_id == vehicle.id,  # ownership check, every time
-    ).first()
+    media = (
+        db.query(CameraMedia)
+        .filter(
+            CameraMedia.id == media_id,
+            CameraMedia.vehicle_id == vehicle.id,  # ownership check, every time
+        )
+        .first()
+    )
 
     if not media or not os.path.exists(media.file_path):
         raise HTTPException(status_code=404, detail="Media not found")
@@ -429,10 +423,14 @@ def delete_camera_media(
     vehicle: Vehicle = Depends(get_current_vehicle),
     db: Session = Depends(get_db),
 ):
-    media = db.query(CameraMedia).filter(
-        CameraMedia.id == media_id,
-        CameraMedia.vehicle_id == vehicle.id,
-    ).first()
+    media = (
+        db.query(CameraMedia)
+        .filter(
+            CameraMedia.id == media_id,
+            CameraMedia.vehicle_id == vehicle.id,
+        )
+        .first()
+    )
 
     if not media:
         raise HTTPException(status_code=404, detail="Media not found")

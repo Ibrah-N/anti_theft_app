@@ -2,7 +2,6 @@
 
 import json
 import logging
-from typing import Dict, List
 
 from fastapi import WebSocket
 
@@ -12,7 +11,7 @@ logger = logging.getLogger(__name__)
 class WebSocketManager:
     def __init__(self):
         # vehicle_id → list of connected WebSocket clients
-        self._connections: Dict[int, List[WebSocket]] = {}
+        self._connections: dict[int, list[WebSocket]] = {}
 
     async def connect(self, vehicle_id: int, websocket: WebSocket):
         await websocket.accept()
@@ -36,8 +35,8 @@ class WebSocketManager:
         if not clients:
             return
 
-        payload  = json.dumps(message)
-        dead     = []
+        payload = json.dumps(message)
+        dead = []
 
         for ws in clients:
             try:

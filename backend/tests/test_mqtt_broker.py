@@ -90,3 +90,17 @@ def test_device_status_reaches_the_backend(backend_mqtt, fake_device):
     msg_type, sender, data = received.get(timeout=TIMEOUT_S)
     assert (msg_type, sender) == ("status", device_id)
     assert data == {"battery_level": 12.4}
+
+
+def test_backend_keeps_working_after_a_malformed_message(backend_mqtt, fake_device):
+    """Regression: one non-UTF-8 message used to kill paho's network thread, so the
+    backend silently stopped receiving messages from every device."""
+    service, received = backend_mqtt
+    device_id, device_client, _ = fake_device
+
+    device_client.publish(f"sg/{device_id}/status", b"\xff\xfe not utf-8", qos=1)
+    device_client.publish(f"sg/{device_id}/status", json.dumps({"battery_level": 11.9}), qos=1)
+
+    msg_type, sender, data = received.get(timeout=TIMEOUT_S)
+    assert (msg_type, sender, data) == ("status", device_id, {"battery_level": 11.9})
+    assert service.client._thread is not None and service.client._thread.is_alive()

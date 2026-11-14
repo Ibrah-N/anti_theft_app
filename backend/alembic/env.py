@@ -26,7 +26,8 @@ from app.models import (  # noqa: F401
 # access to the values within the .ini file in use.
 config = context.config
 
-
+# Use DATABASE_URL from backend/.env so the DB password lives in one place
+# (alembic.ini's sqlalchemy.url is only a fallback).
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("%", "%%"))
 
 # Interpret the config file for Python logging.

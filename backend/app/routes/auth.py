@@ -78,7 +78,13 @@ def refresh(payload: RefreshPayload, db: Session = Depends(get_db)):
         )
 
     user_id = token_data.get("sub")
+    if not isinstance(user_id, str) or not user_id.isdigit():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
     user = db.query(User).filter(User.id == int(user_id)).first()
+
     if not user or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

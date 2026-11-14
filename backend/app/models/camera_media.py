@@ -4,10 +4,6 @@ import enum
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:  # imported only for type checkers; avoids a circular import
-    from app.models.vehicle import Vehicle
-
-
 from sqlalchemy import (
     BigInteger,
     DateTime,
@@ -21,6 +17,9 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:  # imported only for type checkers; avoids a circular import
+    from app.models.vehicle import Vehicle
 
 
 class CameraMediaType(str, enum.Enum):

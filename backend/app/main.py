@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from firebase_admin import credentials
 
-import app.models  # noqa: F401  (registers every model with SQLAlchemy before first use)
+from app import models  # noqa: F401  (registers every model with SQLAlchemy before first use)
 from app.core.config import settings
 
 # Import routers

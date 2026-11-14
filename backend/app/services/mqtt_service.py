@@ -100,6 +100,9 @@ class MQTTService:
         #            cert_reqs=ssl.CERT_REQUIRED,
         #            tls_version=ssl.PROTOCOL_TLS_CLIENT,
         #        )
+        # Second safety net: if an exception still escapes a callback, paho logs it
+        # instead of letting it kill the network thread (see _on_message).
+        self.client.suppress_exceptions = True
         self._connected = False
         self._db_callback = None  # injected after startup to avoid circular imports
 
@@ -153,14 +156,29 @@ class MQTTService:
         logger.warning(f"MQTT disconnected — reason: {reason_code}")
 
     def _on_message(self, client, userdata, message):
-        topic = message.topic
-        payload = message.payload.decode("utf-8")
+        # This runs on paho's network thread. If an exception escapes from here,
+        # that thread dies and the backend silently stops receiving messages from
+        # EVERY device until it is restarted. So nothing may escape: bad input is
+        # logged and dropped, and unexpected errors are logged with a traceback.
+        try:
+            self._route_message(message.topic, message.payload)
+        except Exception:
+            logger.exception(f"Unhandled error processing MQTT message on {message.topic!r}")
+
+    def _route_message(self, topic: str, raw: bytes) -> None:
         logger.info(f"MQTT message received → topic: {topic}")
 
+        # Device messages are untrusted input: they may be truncated, corrupted,
+        # or crafted. Accept only a UTF-8 JSON object; drop everything else.
         try:
-            data = json.loads(payload)
-        except json.JSONDecodeError:
-            logger.error(f"Invalid JSON on topic {topic}: {payload}")
+            data = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            logger.warning(f"Dropping non-JSON payload on {topic!r} ({len(raw)} bytes)")
+            return
+        if not isinstance(data, dict):
+            logger.warning(
+                f"Dropping payload on {topic!r}: expected a JSON object, got {type(data).__name__}"
+            )
             return
 
         # Extract device_id from topic — sg/{device_id}/sensors

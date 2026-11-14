@@ -45,3 +45,20 @@ extend-immutable-calls = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["app", "tests"]
+
+
+# check_untyped_defs = true: check the inside of functions even when they have no type hints. Most of your code has none yet, so without this mypy would skip it.
+# plugins = ["pydantic.mypy"] teaches mypy how Pydantic models work.
+# firebase_admin has no type information at all, so we tell mypy not to complain about that one library.
+
+[tool.mypy]
+python_version = "3.12"
+files = ["app"]
+plugins = ["pydantic.mypy"]
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+module = ["firebase_admin", "firebase_admin.*"]
+ignore_missing_imports = true

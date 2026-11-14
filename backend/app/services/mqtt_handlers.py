@@ -297,6 +297,9 @@ def _handle_ack(db, vehicle, data: dict):
     can clear its "pending" UI state and show an error.
     """
     cmd = data.get("cmd")
+    if not isinstance(cmd, str):
+        logger.warning(f"ACK without a valid 'cmd' from vehicle {vehicle.id} — ignoring")
+        return
     state = bool(data.get("state", False))
     success = bool(data.get("success", False))
 
@@ -348,7 +351,7 @@ async def _broadcast_ack(vehicle, cmd: str, state: bool, success: bool):
 def _handle_webrtc_offer(db, vehicle, data: dict):
     """Expected payload: {"sdp": "...", "call_id": "..."}"""
     call_id = data.get("call_id")
-    if not webrtc_signaling.is_valid_call(vehicle.id, call_id):
+    if not isinstance(call_id, str) or not webrtc_signaling.is_valid_call(vehicle.id, call_id):
         logger.warning(
             f"Vehicle {vehicle.id} — dropping WebRTC offer for stale/unknown " f"call_id={call_id}"
         )
@@ -365,7 +368,7 @@ def _handle_webrtc_offer(db, vehicle, data: dict):
 def _handle_webrtc_ice(db, vehicle, data: dict):
     """Expected payload: {"candidate", "sdpMid", "sdpMLineIndex", "call_id"}"""
     call_id = data.get("call_id")
-    if not webrtc_signaling.is_valid_call(vehicle.id, call_id):
+    if not isinstance(call_id, str) or not webrtc_signaling.is_valid_call(vehicle.id, call_id):
         logger.warning(
             f"Vehicle {vehicle.id} — dropping WebRTC ICE candidate for "
             f"stale/unknown call_id={call_id}"

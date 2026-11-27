@@ -1,20 +1,31 @@
 from datetime import UTC, datetime, timedelta
 
+import bcrypt
 import jwt
-from passlib.context import CryptContext
 
 from app.core.config import settings
 
 # ── Password hashing ──────────────────────────────────────────────────────────
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# bcrypt only reads the first 72 bytes of a password. passlib silently cut longer
+# passwords, so every existing hash was made from the first 72 bytes. We do the same
+# explicitly: newer bcrypt versions raise an error instead, which would lock out
+# users with long passwords.
+_BCRYPT_MAX_BYTES = 72
+
+
+def _prepare(password: str) -> bytes:
+    return password.encode("utf-8")[:_BCRYPT_MAX_BYTES]
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(_prepare(password), bcrypt.gensalt()).decode("ascii")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    try:
+        return bcrypt.checkpw(_prepare(plain), hashed.encode("ascii"))
+    except ValueError:  # stored hash is malformed: treat as "wrong password", never crash
+        return False
 
 
 # ── JWT ───────────────────────────────────────────────────────────────────────

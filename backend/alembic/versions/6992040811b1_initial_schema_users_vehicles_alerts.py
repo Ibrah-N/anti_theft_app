@@ -80,3 +80,8 @@ def downgrade() -> None:
     op.drop_table('alerts')
     op.drop_table('vehicles')
     op.drop_table('users')
+    # drop_table does not remove Postgres enum types. Without these two lines a
+    # later `upgrade` fails with: type "alertcategory" already exists.
+    # (Same pattern as the camera_media migration.)
+    sa.Enum(name='alertseverity').drop(op.get_bind(), checkfirst=True)
+    sa.Enum(name='alertcategory').drop(op.get_bind(), checkfirst=True)

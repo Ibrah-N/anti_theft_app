@@ -62,3 +62,7 @@ backend/.env.*
 *.pem
 *.key
 *.p12
+
+# CI coverage output
+.coverage
+coverage.xml

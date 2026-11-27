@@ -1,0 +1,36 @@
+# Checks the locked production dependencies against the public vulnerability database.
+# This is a WARNING check, not a merge blocker: do not add it to the required checks.
+# New CVEs are published every week for code we did not touch, so it also runs on a
+# schedule and turns red when one appears, even if nobody opened a pull request.
+name: Dependency audit
+
+on:
+  pull_request:
+    paths:
+      - "backend/requirements*"
+  schedule:
+    - cron: "0 4 * * 1"          # every Monday 04:00 UTC
+  workflow_dispatch:             # "Run workflow" button in the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    name: Known vulnerabilities (pip-audit)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install audit tool (hash-checked)
+        run: pip install --require-hashes -r requirements-dev.txt
+      - name: Audit production dependencies
+        # --no-deps: the lock file already lists every package, so pip-audit must
+        # not resolve anything itself.
+        run: pip-audit -r requirements.txt --no-deps --disable-pip

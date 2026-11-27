@@ -1,0 +1,19 @@
+# Direct dependencies of the backend: ONLY what the code imports, pinned to one version.
+# Do not install from this file. requirements.txt is generated from it (with every
+# sub-dependency and file hashes). To change a version: edit here, run ./scripts/lock.sh
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+sqlalchemy==2.0.43
+psycopg2-binary==2.9.10
+alembic==1.13.2
+PyJWT==2.15.1
+python-dotenv==1.2.4
+aiomqtt==2.3.0
+websockets==13.0
+pydantic-settings==2.4.0
+httpx==0.28.1
+bcrypt==5.0.0
+email-validator==2.2.0
+paho-mqtt==2.1.0
+firebase-admin==7.5.0
+python-multipart==0.0.32
